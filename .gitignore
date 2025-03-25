@@ -1,0 +1,8 @@
+# Configuration files
+__pycache__/
+.vscode/
+.streamlit/
+.DS_Store
+
+# Data
+data/
