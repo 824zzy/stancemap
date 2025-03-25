@@ -3,5 +3,3 @@ __pycache__/
 .vscode/
 .streamlit/
 .DS_Store
-
-data/politifact.csv
