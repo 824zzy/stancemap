@@ -1,6 +1,4 @@
 import streamlit as st
-import leafmap.foliumap as leafmap
-import random
 import pandas as pd
 import numpy as np
 import altair as alt
