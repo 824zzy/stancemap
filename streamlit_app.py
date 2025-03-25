@@ -160,7 +160,7 @@ def create_map_folium(stance_df):
     marker_cluster = MarkerCluster(
     ).add_to(m)
     # only first 10 rows
-    # stance_df_on_map = stance_df.head(100)
+    stance_df_on_map = stance_df.head(200)
     stance_df_on_map = stance_df
     # data = {
     #     "Tweet": ["Tweet A", "Tweet B", "Tweet C"],
