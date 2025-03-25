@@ -4,5 +4,4 @@ __pycache__/
 .streamlit/
 .DS_Store
 
-# Data
-data/
+data/politifact.csv
