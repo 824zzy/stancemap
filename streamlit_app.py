@@ -172,6 +172,7 @@ def create_map_folium(stance_df):
         popup = f"""
             <b>Tweet</b>: {row['Tweet']}<br>
             <b>Claim:</b> {row['Claim']}<br>
+            <b>Claim verdict:</b> {row['Verdict']}<br>
             <hr style="margin: 4px 0; border: none; height: 1px; background-color: #ccc;">
             <b>Stance:</b> {stance}"""
         icons = {
