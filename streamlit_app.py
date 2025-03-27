@@ -23,9 +23,10 @@ st.logo("https://idir.uta.edu/stance_annotation/image/wildfire_wout_text.png")
 ####### START: Sidebar
 stance_df = get_election_data()
 politifact_df = get_politifact_data()
-politifact_categories = get_politifact_categories()
+categories = get_politifact_categories()
+# concatenate the two dataframes
+stance_df = pd.concat([stance_df, politifact_df], ignore_index=True)
 
-categories = ["Election"] + politifact_categories
 if "selected_category" in st.session_state:
     sidebar_selected_category = st.sidebar.multiselect(
         "Select categories/peoples/issues",
@@ -38,53 +39,38 @@ else:
     sidebar_selected_category = st.sidebar.multiselect(
         "Select categories/peoples/issues",
         categories,
-        default=["Election"],
+        default=["Elections"],
     )
     st.session_state.selected_category = sidebar_selected_category
 
 
 selected_category_str = ", ".join(st.session_state.selected_category)
 
-election_factual_claims = [
-    "Immigrants are helping Democrats steal the election",
-    "Jews, Zionists and Israel control the election results",
-    "Kamala Harris lied about her identity, credibility and eligibility to run for president",
-    "The Trump assassination attempts were staged",
-    "The government is weaponizing or creating hurricanes to interfere with the election",
-    "Electronic voting machines are programmed to change votes ",
-    "Michigan has more registered voters than citizens",
-    "JD Vance admitted to an inappropriate sex act involving a couch in his memoir.",
-    "The crowd at Kamala Harris’s rally was artificially inflated using AI technology.",
-    "Taylor Swift and her fanbase endorse or are partial to Donald Trump for the 2024 Presidential Election.",
-    "Kamala Harris and Tim Walz adopted the Nazi slogan “Strength through Joy” for their 2024 campaign.",
-    "Kamala Harris was involved in a hit-and-run car accident in 2011.",
-    "Kamala Harris wore an earpiece during the debate to receive answers.",
-]
-if "Election" in st.session_state.selected_category:
-    selected_factual_claim = st.sidebar.multiselect(
-        "A factual claim of interest to you",
-        election_factual_claims,
-        # default=["All"],
-        # index=None,
-        placeholder="Select factual claims",
-    )
-else:
-    selected_factual_claim = st.sidebar.multiselect(
-        "A factual claim of interest to you",
-        politifact_df["Claim"].unique().tolist(),
-        # default=["All"],
-        # index=None,
-        placeholder="Select a factual claim",
-    )
+
+
+category_claims = set()
+for c in st.session_state.selected_category:
+    for i, row in politifact_df.iterrows():
+        if c in row["Category"]:
+            category_claims.add(row["Claim"])
+category_claims = ['All']+sorted(list(category_claims))
+            
+selected_factual_claims= st.sidebar.multiselect(
+    "A factual claim of interest to you",
+    category_claims,
+    placeholder="Select a factual claim",
+    default=["All"]
+)
+
 # TODO:
 
-if selected_factual_claim == []:
-    # ask user to select a factual claim
-    st.error("Please select a factual claim")
-    st.stop()
+if selected_factual_claims == ['All']:
+    # use the subset of the dataframe based on the selected category
+    stance_df = stance_df[stance_df["Category"].apply(lambda x: any([c in x for c in st.session_state.selected_category]))]
 else:
-    stance_df = stance_df[stance_df["Claim"].isin(selected_factual_claim)]
-        
+    # use the subset of the dataframe based on the selected category and selected factual claims
+    stance_df = stance_df[stance_df["Claim"].apply(lambda x: x in selected_factual_claims)]
+print(f'len(stance_df): {len(stance_df)}')
 
 # Customize the sidebar
 markdown = """
@@ -92,8 +78,8 @@ Detecting the truthfulness stance of social media posts toward factual claims.
 [Github](<https://github.com/opengeos/streamlit-map-template>)
 """
 if 'selected_state' in st.session_state:
-    print(f'has selected_state: {st.session_state.selected_state}')
     sidebar_selected_state = st.sidebar.selectbox("Select a state", us_states, index=us_states.index(st.session_state.selected_state))
+    print(f'has selected_state: {st.session_state.selected_state}, new selected_state: {sidebar_selected_state}')
     if sidebar_selected_state != st.session_state.selected_state:
         st.session_state.selected_state = sidebar_selected_state
 else:
@@ -118,11 +104,11 @@ st.sidebar.info(markdown)
 ####### START: Main
 # show selected options
 st.write(f"Categories/People/Issues: **_{selected_category_str}_**")
-if len(selected_factual_claim) == 1:
-    selected_factual_claim_str = selected_factual_claim[0]
+if len(selected_factual_claims) == 1:
+    selected_factual_claim_str = selected_factual_claims[0]
     st.write(f"Factual claim: **_{selected_factual_claim_str}_**")
 else:
-    selected_factual_claim_str = "; ".join(selected_factual_claim)
+    selected_factual_claim_str = "; ".join(selected_factual_claims)
     st.write(f"Factual claims: **_{selected_factual_claim_str}_**")
 st.write(f"State: **_{st.session_state.selected_state}_**")
 st.write(f"Stance: **_{selected_stance_str}_**")
@@ -161,16 +147,11 @@ def create_map_folium(stance_df):
     ).add_to(m)
     # only first 10 rows
     stance_df_on_map = stance_df.head(200)
-    stance_df_on_map = stance_df
-    # data = {
-    #     "Tweet": ["Tweet A", "Tweet B", "Tweet C"],
-    #     "City": ["Austin", "Dallas", "Houston"],
-    #     "Stance": ["Positive", "Neutral", "Negative"],
-    #     "Latitude": [30.2672, 32.7767, 29.7604],
-    #     "Longitude": [-97.7431, -96.7970, -95.3698],
-    # }
-    # stance_df = pd.DataFrame(data)
-    # print(stance_df.head())
+    if len(stance_df) > 400:
+        # select 400 rows with interval of 3
+        stance_df_on_map = stance_df[::3].head(400)
+    else:
+        stance_df_on_map = stance_df
     color_mp = {
         "Positive": "green",
         "Neutral": "orange",
@@ -180,10 +161,21 @@ def create_map_folium(stance_df):
     for idx, row in stance_df_on_map.iterrows():
         lat = row["Latitude"]
         lon = row["Longitude"]
+        if np.isnan(lat) or np.isnan(lon):
+            # use state coordinates
+            if row["State"] not in us_states_coords:
+                continue
+            lat = us_states_coords[row["State"]][0]
+            lon = us_states_coords[row["State"]][1]
         stance = row["Stance"]
         color = color_mp.get(stance, "gray")
 
-        popup = f"<b>Tweet</b>: {row['Tweet']}<br><b>City:</b> {row['City']}<br><b>Stance:</b> {stance}"
+        popup = f"""
+            <b>Tweet</b>: {row['Tweet']}<br>
+            <b>Claim:</b> {row['Claim']}<br>
+            <b>City:</b> {row['City']}
+            <hr style="margin: 4px 0; border: none; height: 1px; background-color: #ccc;">
+            <b>Stance:</b> {stance}"""
         icons = {
             "Positive": "plus-circle",
             "Neutral": "dot-circle",
@@ -204,14 +196,10 @@ def create_map_folium(stance_df):
 # m = create_map(stance_df)
 # m.to_streamlit(height=500
 
-print(f'len(stance_df): {len(stance_df)}')
 m = create_map_folium(stance_df)
-print(f'map created, {m}')
 map_data = st_folium(m, height=500, width=1200)
-print(f'map_data: {map_data}')
-if map_data["last_active_drawing"] and (map_data["last_object_clicked_popup"]==None or map_data["last_object_clicked_popup"]!=st.session_state.clicked_popup):
+if map_data["last_active_drawing"] and 'name' in map_data["last_active_drawing"]["properties"]:
     clicked_state = map_data["last_active_drawing"]['properties'].get('name')
-    st.session_state.clicked_popup = map_data["last_object_clicked_popup"]
     if 'clicked_state' not in st.session_state:
         st.session_state.clicked_state = clicked_state
         st.session_state.selected_state = clicked_state
@@ -223,17 +211,23 @@ if map_data["last_active_drawing"] and (map_data["last_object_clicked_popup"]==N
             st.rerun()
     
         
-
-
 tab1, tab2 = st.tabs(
     ["Stance distribution", "Stance timeline"]
 )
 with tab1:
     c1, _, c2 = st.columns((3.9, 0.2, 5.9))
     with c1:
-        negative_count = stance_df[stance_df["Stance"] == "Negative"].shape[0]
-        neutral_count = stance_df[stance_df["Stance"] == "Neutral"].shape[0]
-        positive_count = stance_df[stance_df["Stance"] == "Positive"].shape[0]
+        # set the bar chart title as "claim distribution"
+        if st.session_state.selected_state == "All":
+            c1_df = stance_df
+            st.write("United States level")
+        else:
+            c1_df = stance_df[stance_df["State"]==st.session_state.selected_state]
+            st.write(f"{st.session_state.selected_state}'s state level")
+    
+        negative_count = c1_df[c1_df["Stance"] == "Negative"].shape[0]
+        neutral_count = c1_df[c1_df["Stance"] == "Neutral"].shape[0]
+        positive_count = c1_df[c1_df["Stance"] == "Positive"].shape[0]
         chart_data = pd.DataFrame(
             {
                 "Stance": ["Negative", "Neutral", "Positive"],
@@ -242,11 +236,6 @@ with tab1:
                 "col3": ["#C82820", "#FFA500", "#61A41D"],
             }
         )
-        # set the bar chart title as "claim distribution"
-        if st.session_state.selected_state == "All":
-            st.write("United States level")
-        else:
-            st.write(f"{st.session_state.selected_state}'s city level")
         # a bar chart with the count of each stance
         c = (
             alt.Chart(chart_data)
@@ -273,13 +262,22 @@ with tab1:
         # set the bar chart title as "claim distribution"
         if st.session_state.selected_state == "All":
             st.write("United States level")
+            c2_df = stance_df
         else:
             st.write(f"{st.session_state.selected_state} level")
+            c2_df = stance_df[stance_df["State"]==st.session_state.selected_state]
+
         # create a dataframe, first column is city, second column is negative count, third column is neutral count, fourth column is positive count
         city_stance_df = (
-            stance_df.groupby(["City", "Stance"]).size().unstack().reset_index()
+            c2_df.groupby(["City", "Stance"]).size().unstack().reset_index()
         )
-        # print(city_stance_df.head())
+        # if Positive, Neutral, Negative columns are not present, fill them with 0
+        if "Positive" not in city_stance_df.columns:
+            city_stance_df["Positive"] = 0
+        if "Neutral" not in city_stance_df.columns:
+            city_stance_df["Neutral"] = 0
+        if "Negative" not in city_stance_df.columns:
+            city_stance_df["Negative"] = 0
         st.bar_chart(
             city_stance_df,
             x="City",
@@ -292,13 +290,26 @@ with tab1:
         )
 with tab2:
     # create a dataframe, first column is timestamp, second column is negative count, third column is neutral count, fourth column is positive count
-    timeline_data = (
-        stance_df.groupby(["Timestamp", "Stance"]).size().unstack().reset_index()
-    )
+    if st.session_state.selected_state == "All":
+        timeline_data = (
+            stance_df.groupby(["Timestamp", "Stance"]).size().unstack().reset_index()
+        )
+    else:
+        timeline_data = (
+            stance_df[stance_df["State"]==st.session_state.selected_state].groupby(["Timestamp", "Stance"]).size().unstack().reset_index()
+        )
     # sort the dataframe by timestamp
     timeline_data = timeline_data.sort_values(by="Timestamp")
     # format the timestamp column
     timeline_data["Timestamp"] = pd.to_datetime(timeline_data["Timestamp"])
+    if "Positive" not in timeline_data.columns:
+        timeline_data["Positive"] = 0
+    if "Neutral" not in timeline_data.columns:
+        timeline_data["Neutral"] = 0
+    if "Negative" not in timeline_data.columns:
+        timeline_data["Negative"] = 0
+    print(timeline_data.columns)
+
     # set the bar chart title as "claim distribution"
     if st.session_state.selected_state == "All":
         st.write("Truthfulness stance distribution in United States")

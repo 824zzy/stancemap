@@ -8,7 +8,7 @@ import numpy as np
 @st.cache_data(ttl=3 * 60 * 60)
 def get_election_data():
     # Load the data
-    stance_csv = "./data/2024_election_stance.csv"
+    stance_csv = "./data/2024_election_stance_v2_cleaned.csv"
     stance_df = pd.read_csv(stance_csv)
     # select first 100 rows
     # stance_df = stance_df.head(100)
@@ -24,8 +24,15 @@ def get_election_data():
 @st.cache_data(ttl=3 * 60 * 60)
 def get_politifact_data():
     # Load the data
-    politifact_csv = "./data/politifact.csv"
+    politifact_csv = "./data/stancemap_eval.csv"
     politifact_df = pd.read_csv(politifact_csv)
+    # drop the rows with 'None' in the 'State' column
+    politifact_df = politifact_df[politifact_df["State"] != "None"]
+    # update Stance column, 0 to Positive, 1 to Neutral, 2 to Negative
+    politifact_df["Stance"] = politifact_df["Stance"].replace({0: "Positive", 1: "Neutral", 2: "Negative"})
+    # add jitter to the latitude and longitude
+    politifact_df["Latitude"] = politifact_df["Latitude"] + np.random.normal(0, 0.2, len(politifact_df))
+    politifact_df["Longitude"] = politifact_df["Longitude"] + np.random.normal(0, 0.2, len(politifact_df))
     # select first 100 rows
     # stance_df = stance_df.head(100)
 
@@ -34,8 +41,16 @@ def get_politifact_data():
 
 @st.cache_data(ttl=3 * 60 * 60)
 def get_politifact_categories():
-    politifact_categories = json.load(open("data/politifact_categories.json"))
-    return politifact_categories
+    politifact_csv = "./data/stancemap_eval.csv"
+    politifact_df = pd.read_csv(politifact_csv)
+    category_col = politifact_df["Category"]
+    categories = set()
+    for i in range(len(category_col)):
+        category_row = eval(category_col[i])
+        for c in category_row:
+            if c:
+                categories.add(c)        
+    return list(categories)
 
 
 def get_selected_stance(start_stance, end_stance):

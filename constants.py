@@ -103,3 +103,19 @@ us_states_coords = {
     "Wisconsin": (44.268543, -89.616508),
     "Wyoming": (42.755966, -107.302490),
 }
+
+MANUAL_CLAIM_KEYWORDS = {
+        "Immigrants are helping Democrats steal the election": "illegal",
+        "Jews, Zionists and Israel control the election results": "Jews election",
+        "Kamala Harris lied about her identity, credibility and eligibility to run for president":  "eligibility",
+        "The Trump assassination attempts were staged": "assassination",
+        "The government is weaponizing or creating hurricanes to interfere with the election": "hurricanes",
+        "Electronic voting machines are programmed to change votes ": "programmed",
+        "Michigan has more registered voters than citizens": "Michigan voters",
+        "JD Vance admitted to an inappropriate sex act involving a couch in his memoir.": "sex act",
+        "The crowd at Kamala Harris’s rally was artificially inflated using AI technology.": "AI",
+        "Taylor Swift and her fanbase endorse or are partial to Donald Trump for the 2024 Presidential Election.": "election",
+        "Kamala Harris and Tim Walz adopted the Nazi slogan “Strength through Joy” for their 2024 campaign.": "Nazi slogan",
+        "Kamala Harris was involved in a hit-and-run car accident in 2011.": "hit-and-run",
+        "Kamala Harris wore an earpiece during the debate to receive answers.": "earpiece",
+    }
