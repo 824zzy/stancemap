@@ -163,9 +163,7 @@ def create_map_folium(stance_df):
         lon = row["Longitude"]
         if np.isnan(lat) or np.isnan(lon):
             if row["State"] not in us_states_coords:
-                # use i-ith state's coordinates
-                lat = us_states_coords[us_states[idx % len(us_states)]][0]
-                lon = us_states_coords[us_states[idx % len(us_states)]][1]
+                continue
             else:
                 lat = us_states_coords[row["State"]][0]
                 lon = us_states_coords[row["State"]][1]
