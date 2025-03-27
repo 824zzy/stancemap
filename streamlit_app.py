@@ -164,9 +164,12 @@ def create_map_folium(stance_df):
         if np.isnan(lat) or np.isnan(lon):
             # use state coordinates
             if row["State"] not in us_states_coords:
-                continue
-            lat = us_states_coords[row["State"]][0]
-            lon = us_states_coords[row["State"]][1]
+                # use new york coordinates
+                lat = 40.7128
+                lon = -74.0060
+            else:
+                lat = us_states_coords[row["State"]][0]
+                lon = us_states_coords[row["State"]][1]
         stance = row["Stance"]
         color = color_mp.get(stance, "gray")
 
