@@ -51,7 +51,8 @@ selected_category_str = ", ".join(st.session_state.selected_category)
 
 category_claims = []
 for c in st.session_state.selected_category:
-    category_claims.append(category2claims[c])
+    category_claims.extend(category2claims[c])
+print(category_claims)
 category_claims = ['All']+category_claims
             
 selected_factual_claims= st.sidebar.multiselect(
