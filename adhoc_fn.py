@@ -444,6 +444,20 @@ def us_stance_heatmap():
 
     fig.show()
     
+def dataset_statistics():
+    df1 = pd.read_csv("./data/2024_election_stance_v2_cleaned.csv")
+    df2 = pd.read_csv("./data/stancemap_eval.csv")
+    # concatenate the two dataframes
+    df = pd.concat([df1, df2])
+    print(f'df length: {len(df)}')
+    # unique claim
+    print(f'unique claim: {len(df["Claim"].unique())}')
+    # find all the rows that State is not "None"
+    df_with_state = df[df["State"] != "None"]
+    print(f'df with state: {len(df_with_state)}')
+
+
+    
 
 
 
@@ -453,9 +467,10 @@ if __name__ == "__main__":
     # micro_statistics()
     # macro_statistics()
     # us_stance_heatmap()
+    # clean_us_stance()
 
-    clean_us_stance()
-
+    dataset_statistics()
+    
 
 
 

@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import json
 import numpy as np
+from collections import Counter
 
 
 @st.cache_data(ttl=3 * 60 * 60)
@@ -62,13 +63,17 @@ def get_politifact_categories():
     politifact_csv = "./data/stancemap_eval.csv"
     politifact_df = pd.read_csv(politifact_csv)
     category_col = politifact_df["Category"]
-    categories = set()
+    categories = Counter()
     for i in range(len(category_col)):
         category_row = eval(category_col[i])
         for c in category_row:
             if c:
-                categories.add(c)        
-    return list(categories)
+                categories[c] += 1
+    # sort the categories by frequency
+    categories = sorted(categories.items(), key=lambda x: x[1], reverse=True)
+    # get the category names
+    category_names = [c[0] for c in categories]
+    return category_names
 
 
 def get_selected_stance(start_stance, end_stance):
