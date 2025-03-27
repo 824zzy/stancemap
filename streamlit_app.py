@@ -39,7 +39,7 @@ else:
     sidebar_selected_category = st.sidebar.multiselect(
         "Select categories/peoples/issues",
         categories,
-        default=["Elections"],
+        default=["Donald Trump",],
     )
     st.session_state.selected_category = sidebar_selected_category
 
