@@ -168,11 +168,19 @@ def create_map_folium(stance_df):
                 lon = us_states_coords[row["State"]][1]
         stance = row["Stance"]
         color = color_mp.get(stance, "gray")
+        verdict = {
+            'true': 'True',
+            'mostly-true': "Mostly True", 
+            'half-true': 'Half True',
+            'barely-true': 'Barely True',
+            'false': 'False',
+            'pants-fire': 'Pants on Fire'
+        }
 
         popup = f"""
             <b>Tweet</b>: {row['Tweet']}<br>
             <b>Claim:</b> {row['Claim']}<br>
-            <b>Claim verdict:</b> {row['Verdict']}<br>
+            <b>Claim verdict:</b> {verdict[row['Verdict'].lower()]}<br>
             <hr style="margin: 4px 0; border: none; height: 1px; background-color: #ccc;">
             <b>Stance:</b> {stance}"""
         icons = {
