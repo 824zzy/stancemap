@@ -6,7 +6,7 @@ import folium
 from folium.plugins import MarkerCluster
 from constants import us_states, us_states_coords
 import json
-from tsm_fn import get_election_data, get_politifact_data, get_selected_stance, get_politifact_categories
+from tsm_fn import get_election_data, get_politifact_data, get_selected_stance, get_politifact_categories, get_category2claim
 from streamlit_folium import st_folium
 
 print('#######')
@@ -26,6 +26,7 @@ politifact_df = get_politifact_data()
 categories = get_politifact_categories()
 # concatenate the two dataframes
 stance_df = pd.concat([stance_df, politifact_df], ignore_index=True)
+category2claims = get_category2claim(stance_df)
 
 if "selected_category" in st.session_state:
     sidebar_selected_category = st.sidebar.multiselect(
@@ -39,7 +40,7 @@ else:
     sidebar_selected_category = st.sidebar.multiselect(
         "Select categories/peoples/issues",
         categories,
-        default=["Donald Trump",],
+        default=["Climate Change",],
     )
     st.session_state.selected_category = sidebar_selected_category
 
@@ -48,17 +49,15 @@ selected_category_str = ", ".join(st.session_state.selected_category)
 
 
 
-category_claims = set()
+category_claims = []
 for c in st.session_state.selected_category:
-    for i, row in politifact_df.iterrows():
-        if c in row["Category"]:
-            category_claims.add(row["Claim"])
-category_claims = ['All']+sorted(list(category_claims))
+    category_claims.append(category2claims[c])
+category_claims = ['All']+category_claims
             
 selected_factual_claims= st.sidebar.multiselect(
-    "A factual claim of interest to you",
+    "Factual claims of interest to you",
     category_claims,
-    placeholder="Select a factual claim",
+    placeholder="Select factual claims",
     default=["All"]
 )
 
@@ -173,7 +172,6 @@ def create_map_folium(stance_df):
         popup = f"""
             <b>Tweet</b>: {row['Tweet']}<br>
             <b>Claim:</b> {row['Claim']}<br>
-            <b>City:</b> {row['City']}
             <hr style="margin: 4px 0; border: none; height: 1px; background-color: #ccc;">
             <b>Stance:</b> {stance}"""
         icons = {

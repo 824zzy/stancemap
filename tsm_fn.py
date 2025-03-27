@@ -40,6 +40,24 @@ def get_politifact_data():
 
 
 @st.cache_data(ttl=3 * 60 * 60)
+def get_category2claim(stance_df):
+    category2claim = {}
+    for i in range(len(stance_df)):
+        category = stance_df["Category"][i]
+        category = eval(category)
+        for c in category:
+            c = c.strip()
+            claim = stance_df["Claim"][i]
+            if c in category2claim:
+                category2claim[c].add(claim)
+            else:
+                category2claim[c] = {claim}
+    # sort the claims
+    for category in category2claim:
+        category2claim[category] = sorted(category2claim[category])
+    return category2claim
+
+@st.cache_data(ttl=3 * 60 * 60)
 def get_politifact_categories():
     politifact_csv = "./data/stancemap_eval.csv"
     politifact_df = pd.read_csv(politifact_csv)
