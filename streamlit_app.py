@@ -174,9 +174,12 @@ def create_map_folium(stance_df):
             'half-true': 'Half True',
             'barely-true': 'Barely True',
             'false': 'False',
-            'pants-fire': 'Pants on Fire'
+            'pants-fire': 'Pants on Fire',
+            'full-flop': 'Full Flop',
+            'half-flip': 'Half Flip',
         }
-
+        if row['Verdict']==False:
+            row['Verdict'] = 'false'
         popup = f"""
             <b>Tweet</b>: {row['Tweet']}<br>
             <b>Claim:</b> {row['Claim']}<br>
