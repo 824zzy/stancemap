@@ -241,7 +241,7 @@ def metric_calculation(TP, FN, FP, TN):
     return round(accuracy, 3), round(macro_f1, 3)
 
 
-def macro_statistics():
+def micro_statistics():
     """
     'Public Health': 9325
     'Elections': 7360
@@ -288,10 +288,12 @@ def macro_statistics():
         cnt[k][4] = acc
         cnt[k][5] = f1
     # sort the dictionary by the sum of the values
-    cnt = dict(sorted(cnt.items(), key=lambda x: sum(x[1]), reverse=True))
+    cnt = dict(sorted(cnt.items(), key=lambda x: x[1][-1], reverse=True))
     # print top 20 items
-    for k, v in list(cnt.items())[:20]:
+    print('#######')
+    for k, v in list(cnt.items()):
         print(k, v)
+    print('#######')
 
     state_cnt = defaultdict(lambda: [0,0,0,0, 0, 0])
     for i, row in df.iterrows():
@@ -314,10 +316,11 @@ def macro_statistics():
         acc, f1 = metric_calculation(tp, fn, fp, tn)
         state_cnt[k][4] = acc
         state_cnt[k][5] = f1
-    # sort the dictionary by the sum of the values
-    state_cnt = dict(sorted(state_cnt.items(), key=lambda x: sum(x[1]), reverse=True))
+    # sort the dictionary by the f1 score
+    print(state_cnt)
+    state_cnt = dict(sorted(state_cnt.items(), key=lambda x: x[1][-1], reverse=True))
     # print top 20 items
-    for k, v in list(state_cnt.items())[:20]:
+    for k, v in list(state_cnt.items()):
         print(k, v)
     
 
@@ -331,11 +334,16 @@ def macro_statistics():
         'Truth-$\ominus$': 0,
         'Misi-$\ominus$': 0
     }
+    verdict_count = {
+        'True': set(),
+        'False': set(),
+    }
     for i, row in df.iterrows():
         verdict = row["Verdict"].lower()
         if verdict in ('full-flop', 'half-flip'):
             continue
         verdict = 'True' if verdict in ('true', 'mostly-true', 'half-true') else 'False'
+        verdict_count[verdict].add(row["Claim"])
         stance = row["Stance"]
         if stance == 0:
             if verdict == "True":
@@ -352,17 +360,40 @@ def macro_statistics():
                 cnt['Truth-$\ominus$'] += 1
             else:
                 cnt['Misi-$\ominus$'] += 1
+    print('#######')
     for k, v in cnt.items():
         print(k, v)
-    # print the percentage
+    print('#######')
+    # print the percentage over all
     total = sum(cnt.values())
     for k, v in cnt.items():
         print(k, v / total)
+    print('#######')
+    # print the percentage over each category
+    verdict_count = {k: len(v) for k, v in verdict_count.items()}
+    print(f'Verdict count: {verdict_count}')
+    cnt_verdict_normalized = {}
+    for k, v in cnt.items():
+        print('#######')
+        if k.startswith('Truth'):
+            print(k, v)
+            cnt_verdict_normalized[k] = v * verdict_count['False'] / verdict_count['True']
+            print(k, v *verdict_count['False'] / verdict_count['True'])
+        else:
+            cnt_verdict_normalized[k] = v
+        print('#######')
+    for k, v in cnt_verdict_normalized.items():
+        print(k, v)
+    
+
 
     # draw a bar chart
     colors = ['green', 'green', 'orange', 'orange', 'red', 'red']
     plt.figure(figsize=(12, 6))  # Increase the resolution by setting the figure size
-    plt.bar(cnt.keys(), cnt.values(), color=colors)
+
+    # plt.bar(cnt.keys(), cnt.values(), color=colors)
+    plt.bar(cnt_verdict_normalized.keys(), cnt_verdict_normalized.values(), color=colors)
+
     plt.show()
 
 def us_stance_heatmap():
@@ -464,8 +495,8 @@ def dataset_statistics():
 if __name__ == "__main__":
     # add_verdict_to_raw()
     # add_location_to_raw()
-    # micro_statistics()
-    macro_statistics()
+    micro_statistics()
+    # macro_statistics()
     # us_stance_heatmap()
     # clean_us_stance()
     # dataset_statistics()

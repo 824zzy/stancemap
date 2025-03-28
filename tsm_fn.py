@@ -79,11 +79,11 @@ def get_politifact_categories():
 
 def get_selected_stance(start_stance, end_stance):
     if start_stance == "Negative" and end_stance == "Positive":
-        selected_stance = ["Negative", "Neutral/No Stance", "Positive"]
+        selected_stance = ["Negative", "Neutral", "Positive"]
     elif start_stance == "Neutral/No Stance" and end_stance == "Positive":
-        selected_stance = ["Neutral/No Stance", "Positive"]
+        selected_stance = ["Neutral", "Positive"]
     elif start_stance == "Negative" and end_stance == "Neutral/No Stance":
-        selected_stance = ["Negative", "Neutral/No Stance"]
+        selected_stance = ["Negative", "Neutral"]
     elif start_stance == "Negative" and end_stance == "Negative":
         selected_stance = ["Negative"]
     elif start_stance == "Neutral/No Stance" and end_stance == "Neutral/No Stance":
@@ -91,5 +91,5 @@ def get_selected_stance(start_stance, end_stance):
     elif start_stance == "Positive" and end_stance == "Positive":
         selected_stance = ["Positive"]
     else:
-        selected_stance = ["Negative", "Neutral/No Stance", "Positive"]
+        selected_stance = ["Negative", "Neutral", "Positive"]
     return selected_stance

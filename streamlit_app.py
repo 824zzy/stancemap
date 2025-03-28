@@ -95,6 +95,7 @@ start_stance, end_stance = st.sidebar.select_slider(
     value=("Negative", "Positive"),
 )
 selected_stance = get_selected_stance(start_stance, end_stance)
+stance_df = stance_df[stance_df["Stance"].isin(selected_stance)]
 selected_stance_str = ", ".join(selected_stance)
 
 st.sidebar.info(markdown)
@@ -225,7 +226,7 @@ tab1, tab2 = st.tabs(
     ["Stance distribution", "Stance timeline"]
 )
 with tab1:
-    c1, _, c2 = st.columns((3.9, 0.2, 5.9))
+    c1, c2 = st.columns([2,3])
     with c1:
         # set the bar chart title as "claim distribution"
         if st.session_state.selected_state == "All":
@@ -251,30 +252,30 @@ with tab1:
             alt.Chart(chart_data)
             .mark_bar()
             .encode(
-                x="Stance",
-                y="Count",
-                color=alt.Color(
-                    "Stance",
-                    scale=alt.Scale(
-                        domain=chart_data["Stance"].tolist(),
-                        range=chart_data["col3"].tolist(),
-                    ),
+            x="Stance",
+            y="Count",
+            color=alt.Color(
+                "Stance",
+                scale=alt.Scale(
+                domain=chart_data["Stance"].tolist(),
+                range=chart_data["col3"].tolist(),
                 ),
-                tooltip=["Stance", "Count"]
-                # don't show ledgend
+                legend=None,
+            ),
+            tooltip=["Stance", "Count"]
             )
-            .properties(width=200, height=300)
+            .properties(width=400, height=300)
             .configure_axis(labelFontSize=12, titleFontSize=12)
         )
-        st.altair_chart(c, use_container_width=True)
+        st.altair_chart(c, use_container_width=False)
 
     with c2:
         # set the bar chart title as "claim distribution"
         if st.session_state.selected_state == "All":
-            st.write("United States level")
+            st.write("United States city level")
             c2_df = stance_df
         else:
-            st.write(f"{st.session_state.selected_state} level")
+            st.write(f"{st.session_state.selected_state} city level")
             c2_df = stance_df[stance_df["State"]==st.session_state.selected_state]
 
         # create a dataframe, first column is city, second column is negative count, third column is neutral count, fourth column is positive count
