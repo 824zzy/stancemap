@@ -4,6 +4,7 @@ import pandas as pd
 import json
 import numpy as np
 from collections import Counter
+from constants import us_states_coords
 
 
 @st.cache_data(ttl=3 * 60 * 60)
@@ -27,8 +28,8 @@ def get_politifact_data():
     # Load the data
     politifact_csv = "./data/stancemap_eval.csv"
     politifact_df = pd.read_csv(politifact_csv)
-    # drop the rows with 'None' in the 'State' column
-    politifact_df = politifact_df[politifact_df["State"] != "None"]
+    # only select the rows that State is in us_states_coords
+    politifact_df = politifact_df[politifact_df["State"].isin(us_states_coords)]
     # update Stance column, 0 to Positive, 1 to Neutral, 2 to Negative
     politifact_df["Stance"] = politifact_df["Stance"].replace({0: "Positive", 1: "Neutral", 2: "Negative"})
     # add jitter to the latitude and longitude
