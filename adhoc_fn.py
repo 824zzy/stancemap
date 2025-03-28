@@ -465,11 +465,10 @@ if __name__ == "__main__":
     # add_verdict_to_raw()
     # add_location_to_raw()
     # micro_statistics()
-    # macro_statistics()
+    macro_statistics()
     # us_stance_heatmap()
     # clean_us_stance()
-
-    dataset_statistics()
+    # dataset_statistics()
     
 
 

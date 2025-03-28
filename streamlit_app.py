@@ -288,6 +288,9 @@ with tab1:
             city_stance_df["Neutral"] = 0
         if "Negative" not in city_stance_df.columns:
             city_stance_df["Negative"] = 0
+        # row City="None" is not useful, so remove it
+        city_stance_df = city_stance_df[city_stance_df["City"] != "None"]
+
         st.bar_chart(
             city_stance_df,
             x="City",
