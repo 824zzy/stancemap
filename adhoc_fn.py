@@ -8,7 +8,9 @@ from time import sleep
 from collections import *
 from matplotlib import pyplot as plt
 import plotly.express as px
-from constants import MANUAL_CLAIM_KEYWORDS
+from constants import MANUAL_CLAIM_KEYWORDS, us_states, state_political_dict
+from sklearn.metrics import classification_report
+
 
 def create_us_stance():
     # read the json file
@@ -252,13 +254,15 @@ def micro_statistics():
     'Education': 2570
     'Climate Change': 1844
     """
-    df = pd.read_csv("./data/stancemap_eval.csv")
+    df1 = pd.read_csv("./data/stancemap_eval.csv")
+    df2 = pd.read_csv("./data/2024_election_stance_v2_cleaned.csv")
+    df = pd.concat([df1, df2], ignore_index=True)
     # election_df = pd.read_csv("./data/2024_election_stance_v2.csv")
     print(df.columns) # 'City', 'Claim', 'Tweet', 'Latitude', 'Longitude', 'User', 'Timestamp', 'Stance', 'Category', 'State', 'Verdict']
     # print(election_df.columns)
     
     # print the number of unique verdict
-    print(df["Verdict"].unique())
+    print(df["Verdict"].unique()) # ['FALSE' 'barely-true' 'pants-fire' 'TRUE' 'half-true' 'mostly-true' 'full-flop' 'half-flip']
 
     cnt = defaultdict(lambda: [0,0,0,0,0,0])
     for i, row in df.iterrows():
@@ -267,50 +271,95 @@ def micro_statistics():
         if len(category) > 0:
             category = category[0]
         else:
-            continue
+            category = 'None'
+        if row["Verdict"]==False:
+            row["Verdict"] = "False"
         verdict = row["Verdict"].lower()
-        if verdict in ('full-flop', 'half-flip'):
+        if verdict in ('full-flop', 'half-flip', 'half-true'):
             continue
-        verdict = 'True' if verdict in ('true', 'mostly-true', 'half-true') else 'False'
+        # verdict = 'True' if verdict in ('true', 'mostly-true', 'half-true') else 'False'
+        if verdict in ('true', 'mostly-true'):
+            verdict = 'True'
+        elif verdict in ('false', 'barely-true', 'pants-fire'):
+            verdict = 'False'
         stance = row["Stance"]
-        if verdict == "True" and stance == 0:
+        if verdict == "True" and (stance == 0 or stance == 'Positive'):
             cnt[category][0] += 1
-        elif verdict == "True" and stance == 2:
+            if row['State'] != 'None':
+                cnt['U.S.'][0] += 1
+            cnt['All'][0] += 1
+        elif verdict == "True" and (stance == 2 or stance == 'Negative'):
             cnt[category][1] += 1
-        elif verdict == "False" and stance == 0:
+            if row['State'] != 'None':
+                cnt['U.S.'][1] += 1
+            cnt['All'][1] += 1
+        elif verdict == "False" and (stance == 0 or stance == 'Positive'):
             cnt[category][2] += 1
-        elif verdict == "False" and stance == 2:
+            if row['State'] != 'None':
+                cnt['U.S.'][2] += 1
+            cnt['All'][2] += 1
+        elif verdict == "False" and (stance == 2 or stance == 'Negative'):
             cnt[category][3] += 1
+            if row['State'] != 'None':
+                cnt['U.S.'][3] += 1
+            cnt['All'][3] += 1
         
     for k, v in cnt.items():
         tp, fn, fp, tn = v[0], v[1], v[2], v[3]
         acc, f1 = metric_calculation(tp, fn, fp, tn)
         cnt[k][4] = acc
         cnt[k][5] = f1
+
+    
     # sort the dictionary by the sum of the values
-    cnt = dict(sorted(cnt.items(), key=lambda x: x[1][-1], reverse=True))
+    # cnt = dict(sorted(cnt.items(), key=lambda x: x[1][-1], reverse=True))
+    cnt = dict(sorted(cnt.items(), key=lambda x: sum(x[1]), reverse=True))
     # print top 20 items
     print('#######')
     for k, v in list(cnt.items()):
         print(k, v)
     print('#######')
 
-    state_cnt = defaultdict(lambda: [0,0,0,0, 0, 0])
+    state_cnt = defaultdict(lambda: [0,0,0,0,0,0])
     for i, row in df.iterrows():
+        category = row["Category"]
+        category = eval(category)
         state = row["State"]
-        verdict = row["Verdict"].lower()
-        if verdict in ('full-flop', 'half-flip'):
+        if len(category) > 0:
+            category = category[0]
+        else:
             continue
-        verdict = 'True' if verdict in ('true', 'mostly true', 'half true') else 'False'
+        if row["Verdict"]==False:
+            row["Verdict"] = "False"
+        verdict = row["Verdict"].lower()
+        if verdict in ('full-flop', 'half-flip', 'half-true'):
+            continue
+        if verdict in ('true', 'mostly-true'):
+            verdict = 'True'
+        elif verdict in ('false', 'barely-true', 'pants-fire'):
+            verdict = 'False'
         stance = row["Stance"]
-        if verdict == "True" and stance == 0:
+        if verdict == "True" and (stance == 0 or stance == 'Positive'):
             state_cnt[state][0] += 1
-        elif verdict == "True" and stance == 2:
+            if row['State'] != 'None':
+                state_cnt['U.S.'][0] += 1
+            state_cnt['All'][0] += 1
+        elif verdict == "True" and (stance == 2 or stance == 'Negative'):
             state_cnt[state][1] += 1
-        elif verdict == "False" and stance == 0:
+            if row['State'] != 'None':
+                state_cnt['U.S.'][1] += 1
+            state_cnt['All'][1] += 1
+        elif verdict == "False" and (stance == 0 or stance == 'Positive'):
             state_cnt[state][2] += 1
-        elif verdict == "False" and stance == 2:
+            if row['State'] != 'None':
+                state_cnt['U.S.'][2] += 1
+            state_cnt['All'][2] += 1
+        elif verdict == "False" and (stance == 2 or stance == 'Negative'):
             state_cnt[state][3] += 1
+            if row['State'] != 'None':
+                state_cnt['U.S.'][3] += 1
+            state_cnt['All'][3] += 1
+
     for k, v in state_cnt.items():
         tp, fn, fp, tn = v[0], v[1], v[2], v[3]
         acc, f1 = metric_calculation(tp, fn, fp, tn)
@@ -319,82 +368,127 @@ def micro_statistics():
     # sort the dictionary by the f1 score
     print(state_cnt)
     state_cnt = dict(sorted(state_cnt.items(), key=lambda x: x[1][-1], reverse=True))
+    # state_cnt = dict(sorted(state_cnt.items(), key=lambda x: sum(x[1]), reverse=True))
     # print top 20 items
     for k, v in list(state_cnt.items()):
-        print(k, v)
+        if k in us_states:
+            print(k, v)
+
+    print('#######')
+    political_leaning = {
+        'Republican': [0,0,0,0,0,0],
+        'Democratic': [0,0,0,0,0,0],
+        'Swing': [0,0,0,0,0,0],
+    }
+    for i, row in df.iterrows():
+        category = row["Category"]
+        category = eval(category)
+        state = row["State"]
+        if state not in state_political_dict:
+            continue
+        pl = state_political_dict[state]
+        if len(category) > 0:
+            category = category[0]
+        else:
+            continue
+        if row["Verdict"]==False:
+            row["Verdict"] = "False"
+        verdict = row["Verdict"].lower()
+        if verdict in ('full-flop', 'half-flip', 'half-true'):
+            continue
+        if verdict in ('true', 'mostly-true'):
+            verdict = 'True'
+        elif verdict in ('false', 'barely-true', 'pants-fire'):
+            verdict = 'False'
+        stance = row["Stance"]
+        if verdict == "True" and (stance == 0 or stance == 'Positive'):
+            political_leaning[pl][0] += 1
+        elif verdict == "True" and (stance == 2 or stance == 'Negative'):
+            political_leaning[pl][1] += 1
+        elif verdict == "False" and (stance == 0 or stance == 'Positive'):
+            political_leaning[pl][2] += 1
+        elif verdict == "False" and (stance == 2 or stance == 'Negative'):
+            political_leaning[pl][3] += 1
+
+    for k, v in political_leaning.items():
+        tp, fn, fp, tn = v[0], v[1], v[2], v[3]
+        acc, f1 = metric_calculation(tp, fn, fp, tn)
+        political_leaning[k][4] = acc
+        political_leaning[k][5] = f1
+    
+    for k, v in political_leaning.items():
+        print(f'{k}: {v[0]} {v[1]} {v[2]} {v[3]} {v[4]} {v[5]}')
     
 
 def macro_statistics():
-    df = pd.read_csv("./data/stancemap_eval.csv")
+    df1 = pd.read_csv("./data/2024_election_stance_v2_cleaned.csv")
+    df2 = pd.read_csv("./data/stancemap_eval.csv")
+    df = pd.concat([df1, df2], ignore_index=True)
     cnt = {
         'Truth-$\oplus$': 0,
+        'Uncert-$\oplus$': 0,
         'Misi-$\oplus$': 0,
         'Truth-$\odot$': 0,
+        'Uncert-$\odot$': 0,
         'Misi-$\odot$': 0,
         'Truth-$\ominus$': 0,
+        'Uncert-$\ominus$': 0,
         'Misi-$\ominus$': 0
     }
     verdict_count = {
-        'True': set(),
-        'False': set(),
+        'Fact': set(),
+        'Uncertain': set(),
+        'Misinformation': set(),
     }
     for i, row in df.iterrows():
+        if row["Verdict"]==False:
+            row["Verdict"] = "False"
         verdict = row["Verdict"].lower()
         if verdict in ('full-flop', 'half-flip'):
             continue
-        verdict = 'True' if verdict in ('true', 'mostly-true', 'half-true') else 'False'
+        if verdict in ('true', 'mostly-true'):
+            verdict = 'Fact'
+        elif verdict in ('false', 'barely-true', 'pants-fire'):
+            verdict = 'Misinformation'
+        elif verdict == 'half-true':
+            verdict = 'Uncertain'
+
         verdict_count[verdict].add(row["Claim"])
         stance = row["Stance"]
-        if stance == 0:
-            if verdict == "True":
+        if stance == 0 or stance == 'Positive':
+            if verdict == "Fact":
                 cnt['Truth-$\oplus$'] += 1
-            else:
+            elif verdict == "Misinformation":
                 cnt['Misi-$\oplus$'] += 1
-        elif stance == 1:
-            if verdict == "True":
+            elif verdict == "Uncertain":
+                cnt['Uncert-$\oplus$'] += 1
+        elif stance == 1 or stance == 'Neutral':
+            if verdict == "Fact":
                 cnt['Truth-$\odot$'] += 1
-            else:
+            elif verdict == "Misinformation":
                 cnt['Misi-$\odot$'] += 1
-        elif stance == 2:
-            if verdict == "True":
+            elif verdict == "Uncertain":
+                cnt['Uncert-$\odot$'] += 1
+        elif stance == 2 or stance == 'Negative':
+            if verdict == "Fact":
                 cnt['Truth-$\ominus$'] += 1
-            else:
+            elif verdict == "Misinformation":
                 cnt['Misi-$\ominus$'] += 1
+            elif verdict == "Uncertain":
+                cnt['Uncert-$\ominus$'] += 1
     print('#######')
     for k, v in cnt.items():
         print(k, v)
     print('#######')
+
     # print the percentage over all
     total = sum(cnt.values())
     for k, v in cnt.items():
         print(k, v / total)
-    print('#######')
-    # print the percentage over each category
-    verdict_count = {k: len(v) for k, v in verdict_count.items()}
-    print(f'Verdict count: {verdict_count}')
-    cnt_verdict_normalized = {}
-    for k, v in cnt.items():
-        print('#######')
-        if k.startswith('Truth'):
-            print(k, v)
-            cnt_verdict_normalized[k] = v * verdict_count['False'] / verdict_count['True']
-            print(k, v *verdict_count['False'] / verdict_count['True'])
-        else:
-            cnt_verdict_normalized[k] = v
-        print('#######')
-    for k, v in cnt_verdict_normalized.items():
-        print(k, v)
+
+    # compute precision, recall, accuracy and f1 score for three classes
+
     
-
-
-    # draw a bar chart
-    colors = ['green', 'green', 'orange', 'orange', 'red', 'red']
-    plt.figure(figsize=(12, 6))  # Increase the resolution by setting the figure size
-
-    # plt.bar(cnt.keys(), cnt.values(), color=colors)
-    plt.bar(cnt_verdict_normalized.keys(), cnt_verdict_normalized.values(), color=colors)
-
-    plt.show()
 
 def us_stance_heatmap():
     full2abbr = {
@@ -488,6 +582,35 @@ def dataset_statistics():
     print(f'df with state: {len(df_with_state)}')
 
 
+def classification():
+    # Define labels
+    claim_types = ['Truth', 'Uncertain', 'Misinformation']
+    stance_labels = ['positive', 'neutral', 'negative']  # mapping: $\oplus$, $\odot$, $\ominus$
+
+    # Ground truth labels (based on claim type)
+    true_labels = (
+        ['positive'] * 11646 +
+        ['neutral'] * 10897 +
+        ['negative'] * 113497
+    )
+
+    # Predicted stance labels (based on table structure)
+    # We assume these predictions are associated with each claim type
+    # So, for example, all 6,754 of the $\oplus$ under Truth are predicted as 'positive', etc.
+    pred_labels = (
+        ['positive'] * 6754 + ['neutral'] * 1398 + ['negative'] * 3494 +         # Truth
+        ['positive'] * 5094 + ['neutral'] * 1350 + ['negative'] * 4453 +         # Uncertain
+        ['positive'] * 64643 + ['neutral'] * 9677 + ['negative'] * 39177         # Misinformation
+    )
+
+    # Check counts match
+    assert len(true_labels) == len(pred_labels)
+
+    # Generate classification report
+    print(classification_report(true_labels, pred_labels, target_names=claim_types, digits=3))
+
+
+
     
 
 
@@ -495,11 +618,12 @@ def dataset_statistics():
 if __name__ == "__main__":
     # add_verdict_to_raw()
     # add_location_to_raw()
-    micro_statistics()
-    # macro_statistics()
+    # micro_statistics()
+    macro_statistics()
     # us_stance_heatmap()
     # clean_us_stance()
     # dataset_statistics()
+    # classification()
     
 
 
