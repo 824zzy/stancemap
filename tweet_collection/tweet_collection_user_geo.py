@@ -4,14 +4,7 @@ from collections import defaultdict
 import json
 from retrying import retry
 from time import sleep
-
-USERNAME = "zhuzhengyuan824"
-EMAIL = "zhuzhengyuan824@gmail.com"
-PASSWORD = "Kobe81kobe81"
-
-# USERNAME = 'ClaimBusterTM'
-# EMAIL = 'classifyfact@gmail.com'
-# PASSWORD = 'Idirerb414500uta'
+from credentials import USERNAME, PASSWORD, EMAIL
 
 # Initialize client
 client = Client(
@@ -19,7 +12,7 @@ client = Client(
 )
 
 
-async def main():
+async def main(politifact_keywords):
     await client.login(auth_info_1=USERNAME, auth_info_2=EMAIL, password=PASSWORD)
     # Define the location parameters
     city_geocodes = {
@@ -133,31 +126,14 @@ async def main():
         "Washington D.C.": {"latitude": 38.9072, "longitude": -77.0369},
         "New York": {"latitude": 40.7128, "longitude": -74.0060},
     }
-    MANUAL_CLAIM_KEYWORDS = {
-        "Immigrants are helping Democrats steal the election": "immigrant steal election",
-        "Jews, Zionists and Israel control the election results": "Jews control election",
-        "Kamala Harris lied about her identity, credibility and eligibility to run for president": "Kamala Harris eligibility president",
-        "The Trump assassination attempts were staged": "Trump assassination attempt staged",
-        "The government is weaponizing or creating hurricanes to interfere with the election": "government hurricanes election",
-        "Electronic voting machines are programmed to change votes ": "voting machine programmed",
-        "Michigan has more registered voters than citizens": "Michigan registered voters citizens",
-        "JD Vance admitted to an inappropriate sex act involving a couch in his memoir.": "JD Vance admitt sex act",
-        "The crowd at Kamala Harris’s rally was artificially inflated using AI technology.": "Kamala Harris rally AI",
-        "Taylor Swift and her fanbase endorse or are partial to Donald Trump for the 2024 Presidential Election.": "Taylor Swift fanbase endorse Donald Trump",
-        "Kamala Harris and Tim Walz adopted the Nazi slogan “Strength through Joy” for their 2024 campaign.": "Kamala Harris Tim Walz adopted Nazi slogan",
-        "Kamala Harris was involved in a hit-and-run car accident in 2011.": "Kamala Harris hit-and-run 2011",
-        "Kamala Harris wore an earpiece during the debate to receive answers.": "Kamala Harris earpiece answers",
-    }
     dataset = defaultdict(list)
     cnt = 0
     for ct, geo in city_geocodes.items():
         lat, lon = geo["latitude"], geo["longitude"]
-        for clm, kwd in MANUAL_CLAIM_KEYWORDS.items():
-            # query = f'{kwd} geocode:{lat},{lon},100km'
-            query = f"{kwd}"
+        for clm, kwd in politifact_keywords.items():
+            query = f'{kwd} geocode:{lat},{lon},100km'
             try:
                 tweets = await client.search_tweet(
-                    # f'{kwd} near: {ct}',
                     query,
                     "Latest",
                 )
@@ -166,7 +142,6 @@ async def main():
                 # sleep for 15 minutes
                 sleep(910)
                 tweets = await client.search_tweet(
-                    # f'{kwd} near: {ct}',
                     query,
                     "Latest",
                 )

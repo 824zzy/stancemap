@@ -486,7 +486,16 @@ def macro_statistics():
     for k, v in cnt.items():
         print(k, v / total)
 
-    # compute precision, recall, accuracy and f1 score for three classes
+    # draw a bar chart
+    colors = ['green', 'green', 'green', 'orange', 'orange', 'orange', 'red', 'red', 'red']
+    plt.figure(figsize=(12, 6))  # Increase the resolution by setting the figure size
+
+    # plt.bar(cnt.keys(), cnt.values(), color=colors)
+    plt.bar(cnt.keys(), cnt.values(), color=colors)
+    plt.xlabel("Stance")
+    plt.ylabel("Count")
+    plt.xticks(rotation=45)
+    plt.show()
 
     
 

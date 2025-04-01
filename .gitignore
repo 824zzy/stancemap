@@ -3,5 +3,6 @@ __pycache__/
 .vscode/
 .streamlit/
 .DS_Store
+credentials.py
 
 data/tweets_latest_2025_mar*.json

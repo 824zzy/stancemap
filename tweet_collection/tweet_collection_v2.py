@@ -8,18 +8,7 @@ from datetime import datetime
 import spacy
 import pandas as pd
 from tqdm import tqdm
-
-USERNAME = "zhuzhengyuan824"
-EMAIL = "zhuzhengyuan824@gmail.com"
-PASSWORD = "Kobe81kobe81"
-
-# USERNAME = 'ClaimBusterTM'
-# EMAIL = 'classifyfact@gmail.com'
-# PASSWORD = 'Idirerb414500uta'
-
-# USERNAME = 'AllenZhang92231'
-# EMAIL = 'zzy879305037@gmail.com'
-# PASSWORD = 'allenzhang123'
+from credentials import USERNAME, PASSWORD, EMAIL
 
 # Initialize client
 client = Client(
@@ -141,10 +130,6 @@ async def main(politifact_keywords):
             if claim_tweet_cnt > 400 or page_cnt == 0:
                 break
             print(f'{cnt}: {clm}, [{query}] - {claim_tweet_cnt}')
-        #     if cnt > 100:
-        #         break
-        # if cnt > 100:
-        #     break
     print(cnt)
 
 
@@ -175,10 +160,6 @@ def extract_keywords():
                 "categories": categories
             }
             idx += 1
-        # print(claim)
-        # print(f'Keywords: {keywords}')
-        # print('----------')
-    # print(len(claim2keywords))
 
     # save claim2keywords as json
     with open("data/politifact_claim2keywords.json", "w") as f:
