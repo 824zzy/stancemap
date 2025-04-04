@@ -74,7 +74,7 @@ print(f'len(stance_df): {len(stance_df)}')
 # Customize the sidebar
 markdown = """
 Detecting the truthfulness stance of social media posts toward factual claims.
-[Github](<https://github.com/opengeos/streamlit-map-template>)
+[Github](<https://github.com/idirlab/trustmap>)
 """
 if 'selected_state' in st.session_state:
     sidebar_selected_state = st.sidebar.selectbox("Select a state", us_states, index=us_states.index(st.session_state.selected_state))
