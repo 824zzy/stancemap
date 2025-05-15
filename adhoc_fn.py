@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 import plotly.express as px
 from constants import MANUAL_CLAIM_KEYWORDS, us_states, state_political_dict
 from sklearn.metrics import classification_report
+from matplotlib.patches import Patch
 
 
 def create_us_stance():
@@ -486,15 +487,60 @@ def macro_statistics():
     for k, v in cnt.items():
         print(k, v / total)
 
+
     # draw a bar chart
     colors = ['green', 'green', 'green', 'orange', 'orange', 'orange', 'red', 'red', 'red']
-    plt.figure(figsize=(12, 6))  # Increase the resolution by setting the figure size
+    hatches = ['/', '|', '\\', '/', '|', '\\', '/', '|', '\\']  # Add hatches for shading
+    plt.figure(figsize=(14, 7))  # Increase the resolution by setting the figure size
 
-    # plt.bar(cnt.keys(), cnt.values(), color=colors)
-    plt.bar(cnt.keys(), cnt.values(), color=colors)
+    # Add gaps for the third and fourth columns and sixth and seventh columns
+    cnt_keys = list(cnt.keys())
+    cnt_values = list(cnt.values())
+    colors_with_gaps = []
+    hatches_with_gaps = []
+    keys_with_gaps = []
+    values_with_gaps = []
+
+    for i, (key, value) in enumerate(zip(cnt_keys, cnt_values)):
+        keys_with_gaps.append(key)
+        values_with_gaps.append(value)
+        colors_with_gaps.append(colors[i])
+        hatches_with_gaps.append(hatches[i])
+        # Add a gap after the third and sixth columns
+        if i == 2 or i == 5:
+            keys_with_gaps.append(" "*i)
+            values_with_gaps.append(0)
+            colors_with_gaps.append("white")  # Invisible bar for the gap
+            hatches_with_gaps.append("")  # No hatch for the gap
+    print(keys_with_gaps, values_with_gaps, colors_with_gaps)
+    # clear plt cache
+    plt.clf()
+    bars = plt.bar(keys_with_gaps, values_with_gaps, color=colors_with_gaps)
+
+    # Add hatches to the bars
+    for bar, hatch in zip(bars, hatches_with_gaps):
+        bar.set_hatch(hatch)
+
     plt.xlabel("Stance")
     plt.ylabel("Count")
     plt.xticks(rotation=45)
+
+    # Add values at the top of the bars
+    for bar in bars:
+        height = bar.get_height()
+        if height > 0:  # Avoid adding text to the gap bars
+            plt.text(bar.get_x() + bar.get_width() / 2.0, height, f'{int(height)}', ha='center', va='bottom')
+
+    # Add legend
+    legend_elements = [
+        Patch(facecolor='green', edgecolor='black', label='Positive'),
+        Patch(facecolor='orange', edgecolor='black', label='Neutral'),
+        Patch(facecolor='red', edgecolor='black', label='Negative'),
+        Patch(facecolor='white', edgecolor='black', hatch='///', label='Truth'),
+        Patch(facecolor='white', edgecolor='black', hatch='|||', label='Uncertain'),
+        Patch(facecolor='white', edgecolor='black', hatch='\\\\\\', label='Misinformation')
+    ]
+    plt.legend(handles=legend_elements, loc='upper right')
     plt.show()
 
     
