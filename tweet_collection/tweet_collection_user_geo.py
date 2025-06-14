@@ -131,20 +131,14 @@ async def main(politifact_keywords):
     for ct, geo in city_geocodes.items():
         lat, lon = geo["latitude"], geo["longitude"]
         for clm, kwd in politifact_keywords.items():
-            query = f'{kwd} geocode:{lat},{lon},100km'
+            query = f"{kwd} geocode:{lat},{lon},100km"
             try:
-                tweets = await client.search_tweet(
-                    query,
-                    "Latest",
-                )
+                tweets = await client.search_tweet(query, "Latest",)
             except Exception as e:
                 print(f"Error: {e}")
                 # sleep for 15 minutes
                 sleep(910)
-                tweets = await client.search_tweet(
-                    query,
-                    "Latest",
-                )
+                tweets = await client.search_tweet(query, "Latest",)
 
             for tweet in tweets:
                 cnt += 1

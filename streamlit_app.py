@@ -4,19 +4,26 @@ import numpy as np
 import altair as alt
 import folium
 from folium.plugins import MarkerCluster
-from constants import us_states, us_states_coords
-import json
-from tsm_fn import get_election_data, get_politifact_data, get_selected_stance, get_politifact_categories, get_category2claim
+from constants import US_STATES, US_STATES_COORDS, VERDICT_FORMATTER, VERDICT_MAPPING
+from tsm_fn import (
+    get_election_data,
+    get_politifact_data,
+    get_selected_stance,
+    get_politifact_categories,
+    get_category2claim,
+    get_taxonomy,
+)
 from streamlit_folium import st_folium
+from report_generation import generate_report
+from collections import defaultdict
+import math
 
-print('#######')
 ####### START: Header
 st.set_page_config(
     layout="wide",
     page_icon="https://idir.uta.edu/stance_annotation/image/wildfire_wout_text.png",
     page_title="Truthfulness Stance Map",
 )
-st.markdown("<h1 style='text-align: center;'>Truthfulness Stance Map</h1>", unsafe_allow_html=True)
 st.logo("https://idir.uta.edu/stance_annotation/image/wildfire_wout_text.png")
 ####### END: Header
 
@@ -24,71 +31,196 @@ st.logo("https://idir.uta.edu/stance_annotation/image/wildfire_wout_text.png")
 stance_df = get_election_data()
 politifact_df = get_politifact_data()
 categories = get_politifact_categories()
+# set up taxonomy
+broad2claim, broad2medium, medium2detailed = get_taxonomy()
 # concatenate the two dataframes
 stance_df = pd.concat([stance_df, politifact_df], ignore_index=True)
 category2claims = get_category2claim(stance_df)
 
-if "selected_category" in st.session_state:
-    sidebar_selected_category = st.sidebar.multiselect(
-        "Select categories/peoples/issues",
-        categories,
-        default=st.session_state.selected_category,
-    )
-    if sidebar_selected_category != st.session_state.selected_category:
-        st.session_state.selected_category = sidebar_selected_category
+# Check if there is a typed factual claim
+has_typed_factual_claim = st.session_state.get("typed_factual_claim", "") != ""
+# Select categories
+selected_categories = st.sidebar.multiselect(
+    "Select categories",
+    categories,
+    default=st.session_state.get("selected_categories", ["Coronavirus"]),
+    disabled=has_typed_factual_claim,
+)
+if selected_categories != st.session_state.get("selected_categories", []):
+    st.session_state.selected_categories = selected_categories
+    st.rerun()  # Force a rerun to ensure the session state is updated
+
+selected_categories_str = ", ".join(st.session_state.selected_categories)
+
+
+if st.session_state.get("selected_categories") == ["Coronavirus"]:
+    broad_topic_options = ["All"] + list(broad2claim.keys())
+
+    # Create columns for indentation
+    col1, col2 = st.sidebar.columns(
+        [1, 14]
+    )  # Adjust the ratio to control the indentation
+
+    with col2:  # Place the select boxes in the second column
+        sidebar_selected_broad_topics = st.multiselect(
+            f"Select broad topics under {selected_categories_str}",
+            broad_topic_options,
+            default=st.session_state.get("selected_broad_topics", None),
+            disabled=has_typed_factual_claim,
+        )
+        if sidebar_selected_broad_topics != st.session_state.get(
+            "selected_broad_topics", []
+        ):
+            st.session_state.selected_broad_topics = sidebar_selected_broad_topics
+            st.rerun()
+        if st.session_state.get("selected_broad_topics", []) != []:
+            medium_topic_options = ["All"]
+            for broad_topic in st.session_state.get("selected_broad_topics"):
+                if broad_topic in broad2medium:
+                    medium_topic_options.extend(broad2medium[broad_topic])
+            selected_broad_topics_str = ", ".join(
+                st.session_state.selected_broad_topics
+            )
+
+            sidebar_selected_medium_topics = st.multiselect(
+                f"Select medium topics under {selected_broad_topics_str}",
+                medium_topic_options,
+                default=st.session_state.get("selected_medium_topic", []),
+                disabled=has_typed_factual_claim,
+            )
+            if sidebar_selected_medium_topics != st.session_state.get(
+                "selected_medium_topics", []
+            ):
+                st.session_state.selected_medium_topics = sidebar_selected_medium_topics
+                st.rerun()
+
+            detailed_topic_options = medium2detailed.get(medium_topic_options[0], [])
+            if (
+                st.session_state.get("selected_medium_topics", []) != []
+                and len(st.session_state.get("selected_medium_topics")) > 0
+            ):
+                detailed_topic_options = ["All"]
+                for medium_topic in st.session_state.get("selected_medium_topics"):
+                    if medium_topic in medium2detailed:
+                        detailed_topic_options.extend(medium2detailed[medium_topic])
+                selected_medium_topics_str = ", ".join(
+                    st.session_state.selected_medium_topics
+                )
+
+                sidebar_selected_detailed_topics = st.multiselect(
+                    f"Select detailed topics under {selected_medium_topics_str}",
+                    detailed_topic_options,
+                    default=st.session_state.get("selected_detailed_topic", None),
+                    disabled=has_typed_factual_claim,
+                )
+                if sidebar_selected_detailed_topics != st.session_state.get(
+                    "selected_detailed_topics", []
+                ):
+                    st.session_state.selected_detailed_topics = (
+                        sidebar_selected_detailed_topics
+                    )
+                    st.rerun()
+
+
+claims_under_categories = []
+for c in st.session_state.selected_categories:
+    claims_under_categories.extend(category2claims[c])
+claims_under_topics = []
+if (
+    st.session_state.get("selected_detailed_topics") is not None
+    and st.session_state.get("selected_medium_topics") is not None
+    and st.session_state.get("selected_broad_topics") is not None
+):
+    for broad_topic in st.session_state.selected_broad_topics:
+        if broad_topic in broad2claim:
+            claims_under_topics.extend(broad2claim[broad_topic])
+    for medium_topic in st.session_state.selected_medium_topics:
+        if medium_topic in broad2medium:
+            claims_under_topics.extend(broad2medium[medium_topic])
+    for detailed_topic in st.session_state.selected_detailed_topics:
+        if detailed_topic in medium2detailed:
+            claims_under_topics.extend(medium2detailed[detailed_topic])
+elif (
+    st.session_state.get("selected_medium_topics") is not None
+    and st.session_state.get("selected_broad_topics") is not None
+):
+    for broad_topic in st.session_state.selected_broad_topics:
+        if broad_topic in broad2claim:
+            claims_under_topics.extend(broad2claim[broad_topic])
+    for medium_topic in st.session_state.selected_medium_topics:
+        if medium_topic in broad2medium:
+            claims_under_topics.extend(broad2medium[medium_topic])
+elif st.session_state.get("selected_broad_topics") is not None:
+    for broad_topic in st.session_state.selected_broad_topics:
+        if broad_topic in broad2claim:
+            claims_under_topics.extend(broad2claim[broad_topic])
+
+print(f"len(claims_under_categories): {len(claims_under_categories)}")
+print(f"len(claims_under_topics): {len(claims_under_topics)}")
+# use claims under topics when there are selected topics, otherwise use claims under categories
+claims_under_categories = set(claims_under_categories)
+claims_under_topics = set(claims_under_topics)
+if len(claims_under_topics) == 0:
+    claim_candidates = claims_under_categories
 else:
-    sidebar_selected_category = st.sidebar.multiselect(
-        "Select categories/peoples/issues",
-        categories,
-        default=["Climate Change",],
-    )
-    st.session_state.selected_category = sidebar_selected_category
+    claim_candidates = claims_under_topics
 
 
-selected_category_str = ", ".join(st.session_state.selected_category)
-
-
-
-category_claims = []
-for c in st.session_state.selected_category:
-    category_claims.extend(category2claims[c])
-category_claims = ['All']+category_claims
-            
-selected_factual_claims= st.sidebar.multiselect(
-    "Factual claims of interest to you",
-    category_claims,
+claim_candidates = ["All"] + list(claim_candidates)
+selected_factual_claims = st.sidebar.multiselect(
+    "Choose factual claims of interest to you",
+    claim_candidates,
     placeholder="Select factual claims",
-    default=["All"]
+    default=["All"],
+    disabled=has_typed_factual_claim,
 )
 
-# TODO:
 
-if selected_factual_claims == ['All']:
+# Allow user to manually type a factual claim
+typed_factual_claim = st.sidebar.text_input(
+    "Or type a factual claim", value=st.session_state.get("typed_factual_claim", ""),
+)
+if typed_factual_claim != st.session_state.get("typed_factual_claim", ""):
+    st.session_state.typed_factual_claim = typed_factual_claim
+    st.rerun()
+
+if selected_factual_claims == ["All"]:
     # use the subset of the dataframe based on the selected category
-    stance_df = stance_df[stance_df["Category"].apply(lambda x: any([c in x for c in st.session_state.selected_category]))]
+    stance_df = stance_df[
+        stance_df["Category"].apply(
+            lambda x: any([c in x for c in st.session_state.selected_categories])
+        )
+    ]
 else:
     # use the subset of the dataframe based on the selected category and selected factual claims
-    stance_df = stance_df[stance_df["Claim"].apply(lambda x: x in selected_factual_claims)]
-print(f'len(stance_df): {len(stance_df)}')
+    stance_df = stance_df[
+        stance_df["Claim"].apply(lambda x: x in selected_factual_claims)
+    ]
+print(f"len(stance_df): {len(stance_df)}")
 
 # Customize the sidebar
 markdown = """
 Detecting the truthfulness stance of social media posts toward factual claims.
 [Github](<https://github.com/idirlab/trustmap>)
 """
-if 'selected_state' in st.session_state:
-    sidebar_selected_state = st.sidebar.selectbox("Select a state", us_states, index=us_states.index(st.session_state.selected_state))
-    print(f'has selected_state: {st.session_state.selected_state}, new selected_state: {sidebar_selected_state}')
+if "selected_state" in st.session_state:
+    sidebar_selected_state = st.sidebar.selectbox(
+        "Select a state",
+        US_STATES,
+        index=US_STATES.index(st.session_state.selected_state),
+    )
+    print(
+        f"has selected_state: {st.session_state.selected_state}, new selected_state: {sidebar_selected_state}"
+    )
     if sidebar_selected_state != st.session_state.selected_state:
         st.session_state.selected_state = sidebar_selected_state
 else:
-    print(f'no selected_state')
-    sidebar_selected_state = st.sidebar.selectbox("Select a state", us_states)
+    print(f"no selected_state")
+    sidebar_selected_state = st.sidebar.selectbox("Select a state", US_STATES)
     st.session_state.selected_state = sidebar_selected_state
 
-    
 
-# selected_score_range = st.sidebar.slider(f'Truthfulness Stance Score Range', min_value=0.0, max_value=1.0, value=(0.0, 1.0), step=0.01)
+# Filter stance_df based on the selected stance
 start_stance, end_stance = st.sidebar.select_slider(
     f"Truthfulness Stance Range",
     options=["Negative", "Neutral/No Stance", "Positive"],
@@ -97,54 +229,81 @@ start_stance, end_stance = st.sidebar.select_slider(
 selected_stance = get_selected_stance(start_stance, end_stance)
 stance_df = stance_df[stance_df["Stance"].isin(selected_stance)]
 selected_stance_str = ", ".join(selected_stance)
-
+# GitHub link at the bottom of the sidebar
 st.sidebar.info(markdown)
 ####### END: Sidebar
 
+
 ####### START: Main
-# show selected options
-st.write(f"Categories/People/Issues: **_{selected_category_str}_**")
-if len(selected_factual_claims) == 1:
-    selected_factual_claim_str = selected_factual_claims[0]
-    st.write(f"Factual claim: **_{selected_factual_claim_str}_**")
-else:
-    selected_factual_claim_str = "; ".join(selected_factual_claims)
-    st.write(f"Factual claims: **_{selected_factual_claim_str}_**")
-st.write(f"State: **_{st.session_state.selected_state}_**")
-st.write(f"Stance: **_{selected_stance_str}_**")
+# Show current display options in a compact summary box
+with st.expander("Current Display Settings", expanded=True):
+    # Use columns for compact display
+    cols = st.columns(4)
+    col_idx = 0
+
+    def next_col():
+        nonlocal_col_idx = next_col.col_idx
+        col = cols[nonlocal_col_idx]
+        next_col.col_idx = (nonlocal_col_idx + 1) % len(cols)
+        return col
+
+    next_col.col_idx = 0
+
+    if not has_typed_factual_claim:
+        next_col().markdown(f"**Categories:** _{selected_categories_str}_")
+        if st.session_state.get("selected_broad_topics"):
+            selected_broad_topics_str = ", ".join(
+                st.session_state.get("selected_broad_topics", [])
+            )
+            next_col().markdown(f"**Broad topics:** _{selected_broad_topics_str}_")
+        if st.session_state.get("selected_medium_topics"):
+            selected_medium_topics_str = ", ".join(
+                st.session_state.get("selected_medium_topics", [])
+            )
+            next_col().markdown(f"**Medium topics:** _{selected_medium_topics_str}_")
+        if st.session_state.get("selected_detailed_topics"):
+            selected_detailed_topics_str = ", ".join(
+                st.session_state.get("selected_detailed_topics", [])
+            )
+            next_col().markdown(
+                f"**Detailed topics:** _{selected_detailed_topics_str}_"
+            )
+        # Show selected factual claims
+        if len(selected_factual_claims) == 1:
+            selected_factual_claim_str = selected_factual_claims[0]
+            next_col().markdown(f"**Factual claim:** _{selected_factual_claim_str}_")
+        else:
+            selected_factual_claim_str = "; ".join(selected_factual_claims)
+            next_col().markdown(f"**Factual claims:** _{selected_factual_claim_str}_")
+    else:
+        next_col().markdown(
+            f"**Typed factual claim:** _{st.session_state.typed_factual_claim}_"
+        )
+    next_col().markdown(f"**State:** _{st.session_state.selected_state}_")
+    next_col().markdown(f"**Stance:** _{selected_stance_str}_")
 
 
 def create_map_folium(stance_df):
-    # Center map
-    # if st.session_state.selected_state != "All":
-    #     print(f'Render map for {st.session_state.selected_state}')
-    #     center_lat = us_states_coords[st.session_state.selected_state][0]
-    #     center_lon = us_states_coords[st.session_state.selected_state][1]
-    #     m = folium.Map(location=[center_lat, center_lon], zoom_start=6)
-    #     print(f'Finished rendering map for {st.session_state.selected_state}')
-    # else:
-    print(f'Render map for all states')
+    print(f"Render map for all states")
     # center_lat, center_lon = 40, -75
     center_lat, center_lon = 40, -100
     m = folium.Map(location=[center_lat, center_lon], zoom_start=4)
-    print(f'Finished rendering map for all states')
-
+    print(f"Finished rendering map for all states")
 
     # Add state layer (GeoJSON)
     states_url = "https://raw.githubusercontent.com/giswqs/leafmap/master/examples/data/us_states.json"
     folium.GeoJson(
-        states_url, 
+        states_url,
         name="US States",
         zoom_on_click=True,
         highlight_function=lambda feature: {
-        "fillColor": (
+            "fillColor": (
                 "green" if "e" in feature["properties"]["name"].lower() else "#ffff00"
             ),
         },
-        ).add_to(m)
-
-    marker_cluster = MarkerCluster(
     ).add_to(m)
+
+    marker_cluster = MarkerCluster().add_to(m)
     # only first 10 rows
     stance_df_on_map = stance_df.head(200)
     if len(stance_df) > 400:
@@ -152,227 +311,438 @@ def create_map_folium(stance_df):
         stance_df_on_map = stance_df[::3].head(400)
     else:
         stance_df_on_map = stance_df
-    color_mp = {
-        "Positive": "green",
-        "Neutral": "orange",
-        "Negative": "red"
-    }
-    print(f'len(stance_df_on_map): {len(stance_df_on_map)}')
+    color_mp = {"Positive": "green", "Neutral": "orange", "Negative": "red"}
+    print(f"len(stance_df_on_map): {len(stance_df_on_map)}")
     for idx, row in stance_df_on_map.iterrows():
         lat = row["Latitude"]
         lon = row["Longitude"]
         if np.isnan(lat) or np.isnan(lon):
-            if row["State"] not in us_states_coords:
+            if row["State"] not in US_STATES_COORDS:
                 continue
             else:
-                lat = us_states_coords[row["State"]][0]
-                lon = us_states_coords[row["State"]][1]
+                lat = US_STATES_COORDS[row["State"]][0]
+                lon = US_STATES_COORDS[row["State"]][1]
         stance = row["Stance"]
         color = color_mp.get(stance, "gray")
-        verdict = {
-            'true': 'True',
-            'mostly-true': "Mostly True", 
-            'half-true': 'Half True',
-            'barely-true': 'Barely True',
-            'false': 'False',
-            'pants-fire': 'Pants on Fire',
-            'full-flop': 'Full Flop',
-            'half-flip': 'Half Flip',
-        }
-        if row['Verdict']==False:
-            row['Verdict'] = 'false'
+        if row["Verdict"] == False:
+            row["Verdict"] = "false"
         popup = f"""
             <b>Tweet</b>: {row['Tweet']}<br>
             <b>Claim:</b> {row['Claim']}<br>
-            <b>Claim verdict:</b> {verdict[row['Verdict'].lower()]}<br>
+            <b>Claim verdict:</b> {VERDICT_FORMATTER[row['Verdict'].lower()]}<br>
             <hr style="margin: 4px 0; border: none; height: 1px; background-color: #ccc;">
-            <b>Stance:</b> {stance}"""
+            <b>Stance:</b> {stance}
+            """
         icons = {
             "Positive": "plus-circle",
             "Neutral": "dot-circle",
-            "Negative": "minus-circle"
+            "Negative": "minus-circle",
         }
         folium.Marker(
             location=[lat, lon],
-            popup=folium.Popup(popup, max_width=300),
-            icon=folium.Icon(
-            icon=icons.get(stance),
-            prefix="fa",
-            color=color
-            )
+            popup=folium.Popup(popup, max_width=400),
+            icon=folium.Icon(icon=icons.get(stance), prefix="fa", color=color),
         ).add_to(marker_cluster)
-
     return m
 
-# m = create_map(stance_df)
-# m.to_streamlit(height=500
 
-m = create_map_folium(stance_df)
-map_data = st_folium(m, height=500, width=1200)
-if map_data["last_active_drawing"] and 'name' in map_data["last_active_drawing"]["properties"]:
-    clicked_state = map_data["last_active_drawing"]['properties'].get('name')
-    if 'clicked_state' not in st.session_state:
+col_map, col_explanation = st.columns([3, 2])
+with col_map:
+    # Render the map in the left column, filling the 3/4 width
+    m = create_map_folium(stance_df)
+    map_data = st_folium(m, height=420, width="100%")  # Let Streamlit fill the column
+
+with col_explanation:
+    # Check if a marker was clicked
+    def generate_explanation(claim, tweet, stance):
+        # Function to call LLM for explanation
+        explanation_prompt = f"""
+        Provide an explanation for the truthfulness stance (whether the tweet believe the claim is true ) result:
+        - Claim: {claim}
+        - Tweet: {tweet}
+        - Stance: {stance}
+        """
+        explanation = generate_report(
+            explanation_prompt
+        )  # Assuming `generate_report` interacts with the LLM
+        return explanation
+
+    if map_data["last_object_clicked_popup"]:
+        clicked_marker = map_data["last_object_clicked_popup"]
+        # Extract the claim from the clicked marker
+        claim = clicked_marker.split("Claim: ")[1].split("\n")[0]
+        # Extract the tweet from the clicked marker
+        tweet = clicked_marker.split("Tweet: ")[1].split("\n")[0]
+        # Extract the stance from the clicked marker
+        stance = clicked_marker.split("Stance: ")[1].split("\n")[0]
+        with st.expander("Explain stance for the selected tweet", expanded=False):
+            if st.button(f"Generate Explanation", key=f"explain_{clicked_marker}"):
+                explanation = generate_explanation(claim, tweet, stance)
+                st.markdown(f"**Claim:** {claim}")
+                st.markdown(f"***Tweet***: {tweet}")
+                st.markdown(f"**Stance:** {stance}")
+                st.markdown(f"**Stance Explanation:** {explanation}")
+
+
+if (
+    map_data["last_active_drawing"]
+    and "name" in map_data["last_active_drawing"]["properties"]
+):
+    clicked_state = map_data["last_active_drawing"]["properties"].get("name")
+    if "clicked_state" not in st.session_state:
         st.session_state.clicked_state = clicked_state
         st.session_state.selected_state = clicked_state
         st.rerun()
     elif clicked_state != st.session_state.clicked_state:
-        if st.session_state.clicked_state!=None:
+        if st.session_state.clicked_state != None:
             st.session_state.clicked_state = clicked_state
             st.session_state.selected_state = clicked_state
             st.rerun()
-    
-        
-tab1, tab2 = st.tabs(
-    ["Stance distribution", "Stance timeline"]
+
+# Draw a table that shows the Distribution of X users’ truthfulness stances toward true, mixed, and false claims
+st.markdown(
+    """
+    <h4 style='text-align: center;'>Distribution of Truthfulness Stances</h2>
+""",
+    unsafe_allow_html=True,
 )
-with tab1:
-    c1, c2 = st.columns([2,3])
-    with c1:
-        # set the bar chart title as "claim distribution"
-        if st.session_state.selected_state == "All":
-            c1_df = stance_df
-            st.write("United States level")
-        else:
-            c1_df = stance_df[stance_df["State"]==st.session_state.selected_state]
-            st.write(f"{st.session_state.selected_state}'s state level")
-    
-        negative_count = c1_df[c1_df["Stance"] == "Negative"].shape[0]
-        neutral_count = c1_df[c1_df["Stance"] == "Neutral"].shape[0]
-        positive_count = c1_df[c1_df["Stance"] == "Positive"].shape[0]
-        chart_data = pd.DataFrame(
-            {
-                "Stance": ["Negative", "Neutral", "Positive"],
-                "Count": [negative_count, neutral_count, positive_count],
-                # red  # orange  # green
-                "col3": ["#C82820", "#FFA500", "#61A41D"],
-            }
-        )
-        # a bar chart with the count of each stance
-        c = (
-            alt.Chart(chart_data)
-            .mark_bar()
-            .encode(
-            x="Stance",
-            y="Count",
-            color=alt.Color(
-                "Stance",
-                scale=alt.Scale(
-                domain=chart_data["Stance"].tolist(),
-                range=chart_data["col3"].tolist(),
-                ),
-                legend=None,
-            ),
-            tooltip=["Stance", "Count"]
-            )
-            .properties(width=400, height=300)
-            .configure_axis(labelFontSize=12, titleFontSize=12)
-        )
-        st.altair_chart(c, use_container_width=False)
+# top example: header is Stance, Truth, Mixed, Misinfor, Precision, Recal F1; First raw is \oplus, 6,754 5,094 64,643 9.0 15.6; Second row is \ominus, 1,398 1,350 9,677 10.9 11.7; Third row is \ominus, 3,494 4,453 39,177 83.1 48.8; Fourth row is Recall, 58.0 12.4 34.6, -, -
 
-    with c2:
-        # set the bar chart title as "claim distribution"
-        if st.session_state.selected_state == "All":
-            st.write("United States city level")
-            c2_df = stance_df
-        else:
-            st.write(f"{st.session_state.selected_state} city level")
-            c2_df = stance_df[stance_df["State"]==st.session_state.selected_state]
 
-        # create a dataframe, first column is city, second column is negative count, third column is neutral count, fourth column is positive count
-        city_stance_df = (
-            c2_df.groupby(["City", "Stance"]).size().unstack().reset_index()
-        )
-        # if Positive, Neutral, Negative columns are not present, fill them with 0
-        if "Positive" not in city_stance_df.columns:
-            city_stance_df["Positive"] = 0
-        if "Neutral" not in city_stance_df.columns:
-            city_stance_df["Neutral"] = 0
-        if "Negative" not in city_stance_df.columns:
-            city_stance_df["Negative"] = 0
-        # row City="None" is not useful, so remove it
-        city_stance_df = city_stance_df[city_stance_df["City"] != "None"]
-
-        st.bar_chart(
-            city_stance_df,
-            x="City",
-            y=["Positive", "Neutral", "Negative"],
-            color=["#C82820", "#FFA500", "#61A41D"],
-            width=600,
-            height=300,
-            horizontal=False,
-            use_container_width=False,
-        )
-with tab2:
-    # create a dataframe, first column is timestamp, second column is negative count, third column is neutral count, fourth column is positive count
-    if st.session_state.selected_state == "All":
-        timeline_data = (
-            stance_df.groupby(["Timestamp", "Stance"]).size().unstack().reset_index()
-        )
-    else:
-        timeline_data = (
-            stance_df[stance_df["State"]==st.session_state.selected_state].groupby(["Timestamp", "Stance"]).size().unstack().reset_index()
-        )
-    # sort the dataframe by timestamp
-    timeline_data = timeline_data.sort_values(by="Timestamp")
-    # format the timestamp column
-    timeline_data["Timestamp"] = pd.to_datetime(timeline_data["Timestamp"])
-    if "Positive" not in timeline_data.columns:
-        timeline_data["Positive"] = 0
-    if "Neutral" not in timeline_data.columns:
-        timeline_data["Neutral"] = 0
-    if "Negative" not in timeline_data.columns:
-        timeline_data["Negative"] = 0
-    print(timeline_data.columns)
-
-    # set the bar chart title as "claim distribution"
-    if st.session_state.selected_state == "All":
-        st.write("Truthfulness stance distribution in United States")
-    else:
-        st.write(f"Truthfulness stance distribution in {st.session_state.selected_state}")
-    # a bar chart with the count of each stance
-    st.bar_chart(
-        timeline_data,
-        x="Timestamp",
-        y=["Positive", "Neutral", "Negative"],
-        color=["#C82820", "#FFA500", "#61A41D"],
+# Curate data for rendering the table
+# limit the stance_df to the selected state
+if st.session_state.selected_state == "All":
+    regional_stance_df = stance_df
+else:
+    regional_stance_df = stance_df[
+        stance_df["State"] == st.session_state.selected_state
+    ]
+table_dict = defaultdict(int)
+for _, row in regional_stance_df.iterrows():
+    verdict = VERDICT_MAPPING[row["Verdict"].lower()]
+    stance = row["Stance"]
+    table_dict[(stance, verdict)] += 1
+print(f"table_dict: {table_dict}")
+table_dict[("Positive", "Precision")] = (
+    table_dict[("Positive", "Truth")]
+    / (
+        table_dict[("Positive", "Truth")]
+        + table_dict[("Positive", "Mixed")]
+        + table_dict[("Positive", "Misinfo")]
     )
-    # c3, _, c4 = st.columns((3.9, 0.2, 5.9))
-    # with c3:
-    #     # create a dataframe, first column is timestamp, second column is negative count, third column is neutral count, fourth column is positive count
-    #     timeline_data = stance_df.groupby(["Timestamp", "Stance"]).size().unstack().reset_index()
-    #     # sort the dataframe by timestamp
-    #     timeline_data = timeline_data.sort_values(by="Timestamp")
-    #     # format the timestamp column
-    #     timeline_data["Timestamp"] = pd.to_datetime(timeline_data["Timestamp"])
-    #     # set the bar chart title as "claim distribution"
-    #     if selected_state == "All":
-    #         st.write("Truthfulness stance distribution in United States")
-    #     else:
-    #         st.write(f"Truthfulness stance distribution in {selected_state}")
-    #     # a bar chart with the count of each stance
-    #     st.bar_chart(
-    #         timeline_data,
-    #         x="Timestamp",
-    #         y=["Positive", "Neutral", "Negative"],
-    #         color=["#C82820", "#2D96C8", "#61A41D"],
-    #     )
+    * 100
+)
+table_dict[("Neutral", "Precision")] = (
+    table_dict[("Neutral", "Truth")]
+    / (
+        table_dict[("Neutral", "Truth")]
+        + table_dict[("Neutral", "Mixed")]
+        + table_dict[("Neutral", "Misinfo")]
+    )
+    * 100
+)
+table_dict[("Negative", "Precision")] = (
+    table_dict[("Negative", "Truth")]
+    / (
+        table_dict[("Negative", "Truth")]
+        + table_dict[("Negative", "Mixed")]
+        + table_dict[("Negative", "Misinfo")]
+    )
+    * 100
+)
+table_dict[("Truth", "Recall")] = (
+    table_dict[("Positive", "Truth")]
+    / (
+        table_dict[("Positive", "Truth")]
+        + table_dict[("Neutral", "Truth")]
+        + table_dict[("Negative", "Truth")]
+    )
+    * 100
+)
+table_dict[("Mixed", "Recall")] = (
+    table_dict[("Positive", "Mixed")]
+    / (
+        table_dict[("Positive", "Mixed")]
+        + table_dict[("Neutral", "Mixed")]
+        + table_dict[("Negative", "Mixed")]
+    )
+    * 100
+)
+table_dict[("Misinfo", "Recall")] = (
+    table_dict[("Positive", "Misinfo")]
+    / (
+        table_dict[("Positive", "Misinfo")]
+        + table_dict[("Neutral", "Misinfo")]
+        + table_dict[("Negative", "Misinfo")]
+    )
+    * 100
+)
+# Add F1 scores
+table_dict[("Positive", "F1")] = (
+    2
+    * (table_dict[("Positive", "Precision")] * table_dict[("Truth", "Recall")])
+    / (table_dict[("Positive", "Precision")] + table_dict[("Truth", "Recall")])
+)
+table_dict[("Neutral", "F1")] = (
+    2
+    * (table_dict[("Neutral", "Precision")] * table_dict[("Mixed", "Recall")])
+    / (table_dict[("Neutral", "Precision")] + table_dict[("Mixed", "Recall")])
+)
+table_dict[("Negative", "F1")] = (
+    2
+    * (table_dict[("Negative", "Precision")] * table_dict[("Misinfo", "Recall")])
+    / (table_dict[("Negative", "Precision")] + table_dict[("Misinfo", "Recall")])
+)
 
-    # with c4:
-    #     # set the bar chart title as "claim distribution"
-    #     st.write("Cummulative truthfulness stance count in United States")
-    #     cumulative_timeline_data = timeline_data.copy()
-    #     print(cumulative_timeline_data.head())
-    #     # calculate the cummulative count for each stance at each timestamp
-    #     cumulative_timeline_data["Positive"] = cumulative_timeline_data["Positive"].cumsum()
-    #     cumulative_timeline_data["Neutral"] = cumulative_timeline_data["Neutral"].cumsum()
-    #     cumulative_timeline_data["Negative"] = cumulative_timeline_data["Negative"].cumsum()
-    #     # a bar chart with the count of each stance
-    #     st.bar_chart(
-    #         cumulative_timeline_data,
-    #         x="Timestamp",
-    #         y=["Positive", "Neutral", "Negative"],
-    #         color=["#C82820", "#2D96C8", "#61A41D"],
-    #     )
+rows = [
+    [
+        "⊕",
+        table_dict.get(("Positive", "Truth"), 0),
+        table_dict.get(("Positive", "Mixed"), 0),
+        table_dict.get(("Positive", "Misinfo"), 0),
+        table_dict.get(("Positive", "Precision"), None),
+        table_dict.get(("Positive", "F1"), None),
+    ],
+    [
+        "⊙",
+        table_dict.get(("Neutral", "Truth"), 0),
+        table_dict.get(("Neutral", "Mixed"), 0),
+        table_dict.get(("Neutral", "Misinfo"), 0),
+        table_dict.get(("Neutral", "Precision"), None),
+        table_dict.get(("Neutral", "F1"), None),
+    ],
+    [
+        "⊖",
+        table_dict.get(("Negative", "Truth"), 0),
+        table_dict.get(("Negative", "Mixed"), 0),
+        table_dict.get(("Negative", "Misinfo"), 0),
+        table_dict.get(("Negative", "Precision"), None),
+        table_dict.get(("Negative", "F1"), None),
+    ],
+    [
+        "Recall",
+        table_dict.get(("Truth", "Recall"), None),
+        table_dict.get(("Mixed", "Recall"), None),
+        table_dict.get(("Misinfo", "Recall"), None),
+        None,
+        None,
+    ],
+]
+
+# Max values for bar scaling
+max_truth = max(r[1] for r in rows[:3])
+max_mixed = max(r[2] for r in rows[:3])
+max_misinfo = max(r[3] for r in rows[:3])
+max_value = max(max_truth, max_mixed, max_misinfo)
+
+# Color per row index
+row_colors = ["#28a745", "#fd7e14", "#dc3545"]  # green, orange, red
+
+
+# Helper to create bar cell with label inside
+def bar_cell(value, max_value, color):
+    if value is None:
+        return ""
+    width_pct = (math.log2(value + 1) / math.log2(max_value + 1)) * 100
+    return f"""
+    <div style='width: 100%; background: #e9ecef; height: 24px; border-radius: 4px; position: relative; overflow: hidden;'>
+        <div style='width: {width_pct:.1f}%; background: {color}; height: 100%; border-radius: 4px; text-align: right; padding-right: 4px; color: white; font-size: 12px; line-height: 24px;'>
+            {value:.1f}
+        </div>
+    </div>
+    """
+
+
+# Build HTML table
+html = """
+<style>
+    table.custom-table {
+        border-collapse: collapse;
+        width: 100%;
+        font-family: sans-serif;
+    }
+    table.custom-table th, table.custom-table td {
+        border: 1px solid #ddd;
+        padding: 6px;
+        vertical-align: middle;
+    }
+</style>
+<table class="custom-table">
+    <tr>
+        <th>Stance</th>
+        <th>Truth</th>
+        <th>Mixed</th>
+        <th>Misinfo</th>
+        <th>Precision</th>
+        <th>F1</th>
+    </tr>
+"""
+
+for i, row in enumerate(rows):
+    stance, truth, mixed, misinfo, precision, f1 = row
+    html += "<tr>"
+    html += f"<td>{stance}</td>"
+
+    # Bar or number for each cell
+    if i < 3:
+        color = row_colors[i]
+        html += f"<td>{bar_cell(truth, max_value, color)}</td>"
+        html += f"<td>{bar_cell(mixed, max_value, color)}</td>"
+        html += f"<td>{bar_cell(misinfo, max_value, color)}</td>"
+    else:
+        html += f"<td>{truth:.1f}</td>"
+        html += f"<td>{mixed:.1f}</td>"
+        html += f"<td>{misinfo:.1f}</td>"
+
+    html += f"<td>{'' if precision is None else f'{precision:.1f}'}</td>"
+    html += f"<td>{'' if f1 is None else f'{f1:.1f}'}</td>"
+    html += "</tr>"
+
+html += "</table>"
+
+st.markdown(html, unsafe_allow_html=True)
+
+# tab1, tab2 = st.tabs(
+#     ["Stance distribution", "Stance timeline"]
+# )
+# with tab1:
+#     c1, c2 = st.columns([2,3])
+#     with c1:
+#         # set the bar chart title as "claim distribution"
+#         if st.session_state.selected_state == "All":
+#             c1_df = stance_df
+#             st.write("United States level")
+#         else:
+#             c1_df = stance_df[stance_df["State"]==st.session_state.selected_state]
+#             st.write(f"{st.session_state.selected_state}'s state level")
+
+#         negative_count = c1_df[c1_df["Stance"] == "Negative"].shape[0]
+#         neutral_count = c1_df[c1_df["Stance"] == "Neutral"].shape[0]
+#         positive_count = c1_df[c1_df["Stance"] == "Positive"].shape[0]
+#         chart_data = pd.DataFrame(
+#             {
+#                 "Stance": ["Negative", "Neutral", "Positive"],
+#                 "Count": [negative_count, neutral_count, positive_count],
+#                 # red  # orange  # green
+#                 "col3": ["#C82820", "#FFA500", "#61A41D"],
+#             }
+#         )
+#         # a bar chart with the count of each stance
+#         c = (
+#             alt.Chart(chart_data)
+#             .mark_bar()
+#             .encode(
+#             x="Stance",
+#             y="Count",
+#             color=alt.Color(
+#                 "Stance",
+#                 scale=alt.Scale(
+#                 domain=chart_data["Stance"].tolist(),
+#                 range=chart_data["col3"].tolist(),
+#                 ),
+#                 legend=None,
+#             ),
+#             tooltip=["Stance", "Count"]
+#             )
+#             .properties(width=400, height=300)
+#             .configure_axis(labelFontSize=12, titleFontSize=12)
+#         )
+#         st.altair_chart(c, use_container_width=False)
+
+#     with c2:
+#         # set the bar chart title as "claim distribution"
+#         if st.session_state.selected_state == "All":
+#             st.write("United States city level")
+#             c2_df = stance_df
+#         else:
+#             st.write(f"{st.session_state.selected_state} city level")
+#             c2_df = stance_df[stance_df["State"]==st.session_state.selected_state]
+
+#         # create a dataframe, first column is city, second column is negative count, third column is neutral count, fourth column is positive count
+#         city_stance_df = (
+#             c2_df.groupby(["City", "Stance"]).size().unstack().reset_index()
+#         )
+#         # if Positive, Neutral, Negative columns are not present, fill them with 0
+#         if "Positive" not in city_stance_df.columns:
+#             city_stance_df["Positive"] = 0
+#         if "Neutral" not in city_stance_df.columns:
+#             city_stance_df["Neutral"] = 0
+#         if "Negative" not in city_stance_df.columns:
+#             city_stance_df["Negative"] = 0
+#         # row City="None" is not useful, so remove it
+#         city_stance_df = city_stance_df[city_stance_df["City"] != "None"]
+
+#         st.bar_chart(
+#             city_stance_df,
+#             x="City",
+#             y=["Positive", "Neutral", "Negative"],
+#             color=["#C82820", "#FFA500", "#61A41D"],
+#             width=600,
+#             height=300,
+#             horizontal=False,
+#             use_container_width=False,
+#         )
+# with tab2:
+# # create a dataframe, first column is timestamp, second column is negative count, third column is neutral count, fourth column is positive count
+# if st.session_state.selected_state == "All":
+#     timeline_data = (
+#         stance_df.groupby(["Timestamp", "Stance"]).size().unstack().reset_index()
+#     )
+# else:
+#     timeline_data = (
+#         stance_df[stance_df["State"]==st.session_state.selected_state].groupby(["Timestamp", "Stance"]).size().unstack().reset_index()
+#     )
+# # sort the dataframe by timestamp
+# timeline_data = timeline_data.sort_values(by="Timestamp")
+# # format the timestamp column
+# timeline_data["Timestamp"] = pd.to_datetime(timeline_data["Timestamp"])
+# if "Positive" not in timeline_data.columns:
+#     timeline_data["Positive"] = 0
+# if "Neutral" not in timeline_data.columns:
+#     timeline_data["Neutral"] = 0
+# if "Negative" not in timeline_data.columns:
+#     timeline_data["Negative"] = 0
+# print(timeline_data.columns)
+
+# # set the bar chart title as "claim distribution"
+# if st.session_state.selected_state == "All":
+#     st.write("Truthfulness stance distribution in United States")
+# else:
+#     st.write(f"Truthfulness stance distribution in {st.session_state.selected_state}")
+# # a bar chart with the count of each stance
+# st.bar_chart(
+#     timeline_data,
+#     x="Timestamp",
+#     y=["Positive", "Neutral", "Negative"],
+#     color=["#C82820", "#FFA500", "#61A41D"],
+# )
+
+
+# Add a section for report generation
+st.markdown(
+    """
+    <p style='text-align: center;'>
+        You can generate a report based on the current selections.
+        This report will summarize the truthfulness stance distribution and other relevant information (precision, recall and F1 score).
+    </p>
+""",
+    unsafe_allow_html=True,
+)
+report_prompt = f"""
+Generate a report based on the following selections:
+- Categories/People/Issues: {selected_categories_str}
+- Factual claims: {selected_factual_claim_str}
+- State: {st.session_state.selected_state}
+- Stance: {selected_stance_str}
+- Distribution statistics:
+{table_dict}
+The report should include an overview of the truthfulness stance distribution, key findings, and any notable trends or insights.
+"""
+if st.button("Generate Report"):
+    with st.spinner("Generating report..."):
+        report = generate_report(report_prompt)
+    st.markdown(f"### Generated Report")
+    st.write(report)
 
 
 ####### END: Main

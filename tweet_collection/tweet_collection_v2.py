@@ -95,12 +95,14 @@ async def main(politifact_keywords):
                 json.dump(tweet_data, f, indent=4)
                 f.write("\n")
         return page_cnt
-        
+
     await client.login(auth_info_1=USERNAME, auth_info_2=EMAIL, password=PASSWORD)
     cnt = 0
-    for idx, obj in tqdm(politifact_keywords.items(), total=len(politifact_keywords.items())):
+    for idx, obj in tqdm(
+        politifact_keywords.items(), total=len(politifact_keywords.items())
+    ):
         clm = obj["claim"]
-        query = ' '.join(obj["keywords"])
+        query = " ".join(obj["keywords"])
         categories = obj["categories"]
         claim_tweet_cnt = 0
         try:
@@ -113,14 +115,16 @@ async def main(politifact_keywords):
         page_cnt = write_to_file(tweets_on_page)
         claim_tweet_cnt += page_cnt
         cnt += page_cnt
-        print(f'{cnt}: {clm}, [{query}] - {claim_tweet_cnt}')
-        if page_cnt==0:
+        print(f"{cnt}: {clm}, [{query}] - {claim_tweet_cnt}")
+        if page_cnt == 0:
             continue
         while True:
             try:
                 tweets_on_page = await tweets_on_page.next()
             except Exception as e:
-                print(f"Time out for searching next page of tweets for {clm}, [{query}]")
+                print(
+                    f"Time out for searching next page of tweets for {clm}, [{query}]"
+                )
                 # sleep for 15 minutes
                 sleep(910)
                 tweets_on_page = await tweets_on_page.next()
@@ -129,7 +133,7 @@ async def main(politifact_keywords):
             cnt += page_cnt
             if claim_tweet_cnt > 400 or page_cnt == 0:
                 break
-            print(f'{cnt}: {clm}, [{query}] - {claim_tweet_cnt}')
+            print(f"{cnt}: {clm}, [{query}] - {claim_tweet_cnt}")
     print(cnt)
 
 
@@ -143,7 +147,9 @@ def extract_keywords():
     politifact_claim_tags = politifact_claim_tags[::-1]
     claim2keywords = {}
     idx = 0
-    for claim, tag in tqdm(zip(politifact_claims, politifact_claim_tags), total=len(politifact_claims)):
+    for claim, tag in tqdm(
+        zip(politifact_claims, politifact_claim_tags), total=len(politifact_claims)
+    ):
         doc = nlp(claim)
         keywords = set()
         for token in doc:
@@ -153,11 +159,11 @@ def extract_keywords():
         if not pd.isna(tag):
             for c in tag.split(","):
                 categories.append(c.strip())
-        if len(keywords)>3 and len(keywords)<9: # none: 24758; 10: 24758; 8:
+        if len(keywords) > 3 and len(keywords) < 9:  # none: 24758; 10: 24758; 8:
             claim2keywords[idx] = {
                 "claim": claim,
                 "keywords": list(keywords),
-                "categories": categories
+                "categories": categories,
             }
             idx += 1
 

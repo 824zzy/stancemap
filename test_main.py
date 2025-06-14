@@ -22,18 +22,16 @@ marker_cluster = MarkerCluster().add_to(m)
 for _, row in stance_df.iterrows():
     lat, lon = row["Latitude"], row["Longitude"]
     stance = row["Stance"]
-    color = {
-        "Positive": "green",
-        "Neutral": "orange",
-        "Negative": "red"
-    }.get(stance, "gray")
+    color = {"Positive": "green", "Neutral": "orange", "Negative": "red"}.get(
+        stance, "gray"
+    )
 
     if pd.notnull(lat) and pd.notnull(lon):
-        popup = f"{row['Tweet']}<br><b>City:</b> {row['City']}<br><b>Stance:</b> {stance}"
+        popup = (
+            f"{row['Tweet']}<br><b>City:</b> {row['City']}<br><b>Stance:</b> {stance}"
+        )
         folium.Marker(
-            location=[lat, lon],
-            popup=popup,
-            icon=folium.Icon(color=color)
+            location=[lat, lon], popup=popup, icon=folium.Icon(color=color)
         ).add_to(marker_cluster)
 
 # Render in Streamlit
