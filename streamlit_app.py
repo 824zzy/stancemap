@@ -4,7 +4,13 @@ import numpy as np
 import altair as alt
 import folium
 from folium.plugins import MarkerCluster
-from constants import US_STATES, US_STATES_COORDS, VERDICT_FORMATTER, VERDICT_MAPPING
+from constants import (
+    US_STATES,
+    US_STATES_COORDS,
+    VERDICT_FORMATTER,
+    VERDICT_MAPPING,
+    TEST_TWEETS,
+)
 from tsm_fn import (
     get_election_data,
     get_politifact_data,
@@ -14,7 +20,15 @@ from tsm_fn import (
     get_taxonomy,
 )
 from streamlit_folium import st_folium
-from report_generation import generate_report
+from LLM_fn import generate_report
+from tsm_fn import (
+    get_claim_related_tweets,
+    truthfulness_stance_detection,
+    render_stance_table,
+    render_oneline_stance_table,
+)
+import datetime
+
 from collections import defaultdict
 import math
 
@@ -35,7 +49,6 @@ categories = get_politifact_categories()
 broad2claim, broad2medium, medium2detailed = get_taxonomy()
 # concatenate the two dataframes
 stance_df = pd.concat([stance_df, politifact_df], ignore_index=True)
-category2claims = get_category2claim(stance_df)
 
 # Check if there is a typed factual claim
 has_typed_factual_claim = st.session_state.get("typed_factual_claim", "") != ""
@@ -123,6 +136,7 @@ if st.session_state.get("selected_categories") == ["Coronavirus"]:
 
 
 claims_under_categories = []
+category2claims = get_category2claim(stance_df)
 for c in st.session_state.selected_categories:
     claims_under_categories.extend(category2claims[c])
 claims_under_topics = []
@@ -155,8 +169,6 @@ elif st.session_state.get("selected_broad_topics") is not None:
         if broad_topic in broad2claim:
             claims_under_topics.extend(broad2claim[broad_topic])
 
-print(f"len(claims_under_categories): {len(claims_under_categories)}")
-print(f"len(claims_under_topics): {len(claims_under_topics)}")
 # use claims under topics when there are selected topics, otherwise use claims under categories
 claims_under_categories = set(claims_under_categories)
 claims_under_topics = set(claims_under_topics)
@@ -174,16 +186,6 @@ selected_factual_claims = st.sidebar.multiselect(
     default=["All"],
     disabled=has_typed_factual_claim,
 )
-
-
-# Allow user to manually type a factual claim
-typed_factual_claim = st.sidebar.text_input(
-    "Or type a factual claim", value=st.session_state.get("typed_factual_claim", ""),
-)
-if typed_factual_claim != st.session_state.get("typed_factual_claim", ""):
-    st.session_state.typed_factual_claim = typed_factual_claim
-    st.rerun()
-
 if selected_factual_claims == ["All"]:
     # use the subset of the dataframe based on the selected category
     stance_df = stance_df[
@@ -196,7 +198,27 @@ else:
     stance_df = stance_df[
         stance_df["Claim"].apply(lambda x: x in selected_factual_claims)
     ]
-print(f"len(stance_df): {len(stance_df)}")
+
+
+# Allow user to manually type a factual claim
+typed_factual_claim = st.sidebar.text_area(
+    "Or type a factual claim",
+    value=st.session_state.get("typed_factual_claim", ""),
+    height=100,
+)
+if typed_factual_claim != st.session_state.get("typed_factual_claim", ""):
+    st.session_state.typed_factual_claim = typed_factual_claim
+    # tweets = get_claim_related_tweets(st.session_state.typed_factual_claim)
+    tweets = TEST_TWEETS
+    print("Found tweets related to the claim: ", len(tweets))
+    online_stance_df = truthfulness_stance_detection(
+        claim=st.session_state.typed_factual_claim,
+        tweets=tweets,
+    )
+    st.session_state.online_stance_df = online_stance_df
+    print("typed factual claim stance_df: ", online_stance_df)
+    st.rerun()
+
 
 # Customize the sidebar
 markdown = """
@@ -209,13 +231,9 @@ if "selected_state" in st.session_state:
         US_STATES,
         index=US_STATES.index(st.session_state.selected_state),
     )
-    print(
-        f"has selected_state: {st.session_state.selected_state}, new selected_state: {sidebar_selected_state}"
-    )
     if sidebar_selected_state != st.session_state.selected_state:
         st.session_state.selected_state = sidebar_selected_state
 else:
-    print(f"no selected_state")
     sidebar_selected_state = st.sidebar.selectbox("Select a state", US_STATES)
     st.session_state.selected_state = sidebar_selected_state
 
@@ -284,11 +302,8 @@ with st.expander("Current Display Settings", expanded=True):
 
 
 def create_map_folium(stance_df):
-    print(f"Render map for all states")
-    # center_lat, center_lon = 40, -75
     center_lat, center_lon = 40, -100
     m = folium.Map(location=[center_lat, center_lon], zoom_start=4)
-    print(f"Finished rendering map for all states")
 
     # Add state layer (GeoJSON)
     states_url = "https://raw.githubusercontent.com/giswqs/leafmap/master/examples/data/us_states.json"
@@ -312,7 +327,6 @@ def create_map_folium(stance_df):
     else:
         stance_df_on_map = stance_df
     color_mp = {"Positive": "green", "Neutral": "orange", "Negative": "red"}
-    print(f"len(stance_df_on_map): {len(stance_df_on_map)}")
     for idx, row in stance_df_on_map.iterrows():
         lat = row["Latitude"]
         lon = row["Longitude"]
@@ -324,7 +338,10 @@ def create_map_folium(stance_df):
                 lon = US_STATES_COORDS[row["State"]][1]
         stance = row["Stance"]
         color = color_mp.get(stance, "gray")
-        if row["Verdict"] == False:
+        verdict = row["Verdict"]
+        if pd.isna(verdict):
+            row["Verdict"] = "unknown"
+        elif row["Verdict"] == False:
             row["Verdict"] = "false"
         popup = f"""
             <b>Tweet</b>: {row['Tweet']}<br>
@@ -349,7 +366,10 @@ def create_map_folium(stance_df):
 col_map, col_explanation = st.columns([3, 2])
 with col_map:
     # Render the map in the left column, filling the 3/4 width
-    m = create_map_folium(stance_df)
+    if has_typed_factual_claim:
+        m = create_map_folium(st.session_state.online_stance_df)
+    else:
+        m = create_map_folium(stance_df)
     map_data = st_folium(m, height=420, width="100%")  # Let Streamlit fill the column
 
 with col_explanation:
@@ -400,207 +420,40 @@ if (
             st.rerun()
 
 # Draw a table that shows the Distribution of X users’ truthfulness stances toward true, mixed, and false claims
-st.markdown(
-    """
-    <h4 style='text-align: center;'>Distribution of Truthfulness Stances</h2>
-""",
-    unsafe_allow_html=True,
-)
+# st.markdown(
+#     """
+#     <h4 style='text-align: center;'>Distribution of Truthfulness Stances</h2>
+# """,
+#     unsafe_allow_html=True,
+# )
 # top example: header is Stance, Truth, Mixed, Misinfor, Precision, Recal F1; First raw is \oplus, 6,754 5,094 64,643 9.0 15.6; Second row is \ominus, 1,398 1,350 9,677 10.9 11.7; Third row is \ominus, 3,494 4,453 39,177 83.1 48.8; Fourth row is Recall, 58.0 12.4 34.6, -, -
 
 
 # Curate data for rendering the table
 # limit the stance_df to the selected state
-if st.session_state.selected_state == "All":
-    regional_stance_df = stance_df
+if has_typed_factual_claim:
+    _df = st.session_state.online_stance_df
 else:
-    regional_stance_df = stance_df[
-        stance_df["State"] == st.session_state.selected_state
-    ]
-table_dict = defaultdict(int)
+    _df = stance_df
+
+if st.session_state.selected_state == "All":
+    regional_stance_df = _df
+else:
+    regional_stance_df = _df[_df["State"] == st.session_state.selected_state]
+
 for _, row in regional_stance_df.iterrows():
-    verdict = VERDICT_MAPPING[row["Verdict"].lower()]
-    stance = row["Stance"]
-    table_dict[(stance, verdict)] += 1
-print(f"table_dict: {table_dict}")
-table_dict[("Positive", "Precision")] = (
-    table_dict[("Positive", "Truth")]
-    / (
-        table_dict[("Positive", "Truth")]
-        + table_dict[("Positive", "Mixed")]
-        + table_dict[("Positive", "Misinfo")]
+    print(row)
+
+if has_typed_factual_claim:
+    table_html, table_dict = render_oneline_stance_table(
+        regional_stance_df=regional_stance_df,
     )
-    * 100
-)
-table_dict[("Neutral", "Precision")] = (
-    table_dict[("Neutral", "Truth")]
-    / (
-        table_dict[("Neutral", "Truth")]
-        + table_dict[("Neutral", "Mixed")]
-        + table_dict[("Neutral", "Misinfo")]
-    )
-    * 100
-)
-table_dict[("Negative", "Precision")] = (
-    table_dict[("Negative", "Truth")]
-    / (
-        table_dict[("Negative", "Truth")]
-        + table_dict[("Negative", "Mixed")]
-        + table_dict[("Negative", "Misinfo")]
-    )
-    * 100
-)
-table_dict[("Truth", "Recall")] = (
-    table_dict[("Positive", "Truth")]
-    / (
-        table_dict[("Positive", "Truth")]
-        + table_dict[("Neutral", "Truth")]
-        + table_dict[("Negative", "Truth")]
-    )
-    * 100
-)
-table_dict[("Mixed", "Recall")] = (
-    table_dict[("Positive", "Mixed")]
-    / (
-        table_dict[("Positive", "Mixed")]
-        + table_dict[("Neutral", "Mixed")]
-        + table_dict[("Negative", "Mixed")]
-    )
-    * 100
-)
-table_dict[("Misinfo", "Recall")] = (
-    table_dict[("Positive", "Misinfo")]
-    / (
-        table_dict[("Positive", "Misinfo")]
-        + table_dict[("Neutral", "Misinfo")]
-        + table_dict[("Negative", "Misinfo")]
-    )
-    * 100
-)
-# Add F1 scores
-table_dict[("Positive", "F1")] = (
-    2
-    * (table_dict[("Positive", "Precision")] * table_dict[("Truth", "Recall")])
-    / (table_dict[("Positive", "Precision")] + table_dict[("Truth", "Recall")])
-)
-table_dict[("Neutral", "F1")] = (
-    2
-    * (table_dict[("Neutral", "Precision")] * table_dict[("Mixed", "Recall")])
-    / (table_dict[("Neutral", "Precision")] + table_dict[("Mixed", "Recall")])
-)
-table_dict[("Negative", "F1")] = (
-    2
-    * (table_dict[("Negative", "Precision")] * table_dict[("Misinfo", "Recall")])
-    / (table_dict[("Negative", "Precision")] + table_dict[("Misinfo", "Recall")])
-)
-
-rows = [
-    [
-        "⊕",
-        table_dict.get(("Positive", "Truth"), 0),
-        table_dict.get(("Positive", "Mixed"), 0),
-        table_dict.get(("Positive", "Misinfo"), 0),
-        table_dict.get(("Positive", "Precision"), None),
-        table_dict.get(("Positive", "F1"), None),
-    ],
-    [
-        "⊙",
-        table_dict.get(("Neutral", "Truth"), 0),
-        table_dict.get(("Neutral", "Mixed"), 0),
-        table_dict.get(("Neutral", "Misinfo"), 0),
-        table_dict.get(("Neutral", "Precision"), None),
-        table_dict.get(("Neutral", "F1"), None),
-    ],
-    [
-        "⊖",
-        table_dict.get(("Negative", "Truth"), 0),
-        table_dict.get(("Negative", "Mixed"), 0),
-        table_dict.get(("Negative", "Misinfo"), 0),
-        table_dict.get(("Negative", "Precision"), None),
-        table_dict.get(("Negative", "F1"), None),
-    ],
-    [
-        "Recall",
-        table_dict.get(("Truth", "Recall"), None),
-        table_dict.get(("Mixed", "Recall"), None),
-        table_dict.get(("Misinfo", "Recall"), None),
-        None,
-        None,
-    ],
-]
-
-# Max values for bar scaling
-max_truth = max(r[1] for r in rows[:3])
-max_mixed = max(r[2] for r in rows[:3])
-max_misinfo = max(r[3] for r in rows[:3])
-max_value = max(max_truth, max_mixed, max_misinfo)
-
-# Color per row index
-row_colors = ["#28a745", "#fd7e14", "#dc3545"]  # green, orange, red
-
-
-# Helper to create bar cell with label inside
-def bar_cell(value, max_value, color):
-    if value is None:
-        return ""
-    width_pct = (math.log2(value + 1) / math.log2(max_value + 1)) * 100
-    return f"""
-    <div style='width: 100%; background: #e9ecef; height: 24px; border-radius: 4px; position: relative; overflow: hidden;'>
-        <div style='width: {width_pct:.1f}%; background: {color}; height: 100%; border-radius: 4px; text-align: right; padding-right: 4px; color: white; font-size: 12px; line-height: 24px;'>
-            {value:.1f}
-        </div>
-    </div>
-    """
-
-
-# Build HTML table
-html = """
-<style>
-    table.custom-table {
-        border-collapse: collapse;
-        width: 100%;
-        font-family: sans-serif;
-    }
-    table.custom-table th, table.custom-table td {
-        border: 1px solid #ddd;
-        padding: 6px;
-        vertical-align: middle;
-    }
-</style>
-<table class="custom-table">
-    <tr>
-        <th>Stance</th>
-        <th>Truth</th>
-        <th>Mixed</th>
-        <th>Misinfo</th>
-        <th>Precision</th>
-        <th>F1</th>
-    </tr>
-"""
-
-for i, row in enumerate(rows):
-    stance, truth, mixed, misinfo, precision, f1 = row
-    html += "<tr>"
-    html += f"<td>{stance}</td>"
-
-    # Bar or number for each cell
-    if i < 3:
-        color = row_colors[i]
-        html += f"<td>{bar_cell(truth, max_value, color)}</td>"
-        html += f"<td>{bar_cell(mixed, max_value, color)}</td>"
-        html += f"<td>{bar_cell(misinfo, max_value, color)}</td>"
-    else:
-        html += f"<td>{truth:.1f}</td>"
-        html += f"<td>{mixed:.1f}</td>"
-        html += f"<td>{misinfo:.1f}</td>"
-
-    html += f"<td>{'' if precision is None else f'{precision:.1f}'}</td>"
-    html += f"<td>{'' if f1 is None else f'{f1:.1f}'}</td>"
-    html += "</tr>"
-
-html += "</table>"
-
-st.markdown(html, unsafe_allow_html=True)
+else:
+    table_html, table_dict = render_stance_table(regional_stance_df=regional_stance_df)
+# Display the table using 3 out of 5 column space
+col_table, col_empty = st.columns([3, 2])
+with col_table:
+    st.markdown(table_html, unsafe_allow_html=True)
 
 # tab1, tab2 = st.tabs(
 #     ["Stance distribution", "Stance timeline"]
@@ -728,21 +581,34 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-report_prompt = f"""
-Generate a report based on the following selections:
-- Categories/People/Issues: {selected_categories_str}
-- Factual claims: {selected_factual_claim_str}
-- State: {st.session_state.selected_state}
-- Stance: {selected_stance_str}
-- Distribution statistics:
-{table_dict}
-The report should include an overview of the truthfulness stance distribution, key findings, and any notable trends or insights.
-"""
+if not has_typed_factual_claim:
+    report_prompt = f"""
+    Generate a report based on the following selections:
+    - Categories/People/Issues: {selected_categories_str}
+    - Factual claims: {selected_factual_claim_str}
+    - State: {st.session_state.selected_state}
+    - Stance: {selected_stance_str}
+    - Distribution statistics:
+    {table_dict}
+    The report should include an overview of the truthfulness stance distribution, key findings, and any notable trends or insights.
+    """
+else:
+    report_prompt = f"""
+    Generate a report based on the following typed factual claim:
+    - Factual claim: {st.session_state.typed_factual_claim}
+    - State: {st.session_state.selected_state}
+    - Stance: {selected_stance_str}
+    The report should include an overview of the truthfulness stance distribution, key findings, and any notable trends or insights.
+    """
 if st.button("Generate Report"):
     with st.spinner("Generating report..."):
         report = generate_report(report_prompt)
+        st.session_state.generated_report = report
+
+# Display the report if it exists in session state
+if "generated_report" in st.session_state:
     st.markdown(f"### Generated Report")
-    st.write(report)
+    st.write(st.session_state.generated_report)
 
 
 ####### END: Main

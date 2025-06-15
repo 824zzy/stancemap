@@ -1,3 +1,5 @@
+import datetime
+
 US_STATES = [
     "All",
     "Alabama",
@@ -183,6 +185,7 @@ VERDICT_FORMATTER = {
     "pants-fire": "Pants on Fire",
     "full-flop": "Full Flop",
     "half-flip": "Half Flip",
+    "unknown": "Unknown",
 }
 
 VERDICT_MAPPING = {
@@ -194,4 +197,176 @@ VERDICT_MAPPING = {
     "pants-fire": "Misinfo",
     "full-flop": "Mixed",
     "half-flip": "Mixed",
+    "unknown": "Unknown",
 }
+
+TEST_TWEETS = [
+    {
+        "id": 1933698365813850437,
+        "text": "PolitiFact | Video of #Florida woman yelling about having babies in the car is not from #LAprotests  https://t.co/2Mj0lDIRxv",
+        "created_at": datetime.datetime(
+            2025, 6, 14, 1, 29, 51, tzinfo=datetime.timezone.utc
+        ),
+        "author_id": 514665430,
+        "geo": None,
+        "user_profile": {
+            "username": "LtsFlwr70",
+            "name": "Lotus Flower",
+            "location": "United States",
+            "profile_image_url": "https://pbs.twimg.com/profile_images/1902531546491580417/Ae0udbhr_normal.jpg",
+            "description": "Buddhist. Democrat. COVID avoider. I ♡ coffee, chocolate, music, animals, space, nature, books, & intelligent people. (✿◠‿◠)",
+            "inferred_location": {
+                "city": None,
+                "county": None,
+                "state": None,
+                "latitude": 39.97147442458889,
+                "longitude": -100.53156388054593,
+            },
+        },
+        "place": None,
+    },
+    {
+        "id": 1932834036218818672,
+        "text": "RT @SnapMediaLive: 🚨 🌆 Woman Pleads for Babies’ Safety Amid LA Riots\nVideo Captures Desperate Scene on June 9, 2025\n📍Los Angeles, USA –\n• V…",
+        "created_at": datetime.datetime(
+            2025, 6, 11, 16, 15, 19, tzinfo=datetime.timezone.utc
+        ),
+        "author_id": 1775343444636143616,
+        "geo": None,
+        "user_profile": {
+            "username": "siftings74",
+            "name": "This is the era of the siftings!",
+            "location": "Hong Kong",
+            "profile_image_url": "https://pbs.twimg.com/profile_images/1889121182970253312/5R8Sdm92_normal.jpg",
+            "description": "The UK and Hong Kong must pay reparations to all of Africa! The resource-poor Hong Kong was built to smuggle blood diamonds and conflict minerals for the UK!",
+            "inferred_location": {
+                "city": "Unknown",
+                "county": "Unknown",
+                "state": "Unknown",
+                "latitude": 39.959739349947505,
+                "longitude": -98.92381734328214,
+            },
+        },
+        "place": None,
+    },
+    {
+        "id": 1932602312641687903,
+        "text": '🚨🚨🚨#BREAKING🇺🇸#USA🇺🇸#ICE🇺🇸#IMMIGRANTS🇲🇽 #LosAngeles🇺🇸\nA video from Los Angeles events:\nA woman screaming in Los Angeles 🇺🇸amid the protests while she is in a state of panic:\n"I have babies in the car‼, I have babies in the car‼" https://t.co/IhGQWYketZ',
+        "created_at": datetime.datetime(
+            2025, 6, 11, 0, 54, 32, tzinfo=datetime.timezone.utc
+        ),
+        "author_id": 28347943,
+        "geo": None,
+        "user_profile": {
+            "username": "TOUNESBELALB",
+            "name": "SIMPLY_ME😎",
+            "location": "على إيدك اليمين",
+            "profile_image_url": "https://pbs.twimg.com/profile_images/1855340933543321600/U7EWzwKa_normal.jpg",
+            "description": "رضيت بالله ربا و بالإسلام دينا و بمحمد صلى الله عليه و سلم نبيا 😎\U0001fa77👍 - THEN I TALK ABOUT EVERYTHING HELPFUL - \U0001fa77😎👍DON'T FORGET TO FOLLOW ME",
+            "inferred_location": {
+                "city": "Unknown",
+                "county": "Unknown",
+                "state": "Unknown",
+                "latitude": 40.02712986393408,
+                "longitude": -98.99440342044562,
+            },
+        },
+        "place": None,
+    },
+    {
+        "id": 1932404348241486238,
+        "text": "RT @SnapMediaLive: 🚨 🌆 Woman Pleads for Babies’ Safety Amid LA Riots\nVideo Captures Desperate Scene on June 9, 2025\n📍Los Angeles, USA –\n• V…",
+        "created_at": datetime.datetime(
+            2025, 6, 10, 11, 47, 53, tzinfo=datetime.timezone.utc
+        ),
+        "author_id": 26948706,
+        "geo": None,
+        "user_profile": {
+            "username": "Rae_in_SA",
+            "name": "Rae",
+            "location": None,
+            "profile_image_url": "https://pbs.twimg.com/profile_images/1401295508849709056/Uh4G8713_normal.jpg",
+            "description": "In seeking truth you have to get both sides of the story.  #Independent supporting #MAGA #MAHA #UniteAmerica to save our Country.",
+            "inferred_location": {
+                "city": "Unknown",
+                "county": "Unknown",
+                "state": "Unknown",
+                "latitude": 39.629638455569456,
+                "longitude": -98.66430916348476,
+            },
+        },
+        "place": None,
+    },
+    {
+        "id": 1932367818902900826,
+        "text": "RT @SnapMediaLive: 🚨 🌆 Woman Pleads for Babies’ Safety Amid LA Riots\nVideo Captures Desperate Scene on June 9, 2025\n📍Los Angeles, USA –\n• V…",
+        "created_at": datetime.datetime(
+            2025, 6, 10, 9, 22, 44, tzinfo=datetime.timezone.utc
+        ),
+        "author_id": 1310137442993729537,
+        "geo": None,
+        "user_profile": {
+            "username": "BAJRANGHINDUST8",
+            "name": "𝐁𝐀𝐉𝐑𝐀𝐍𝐆 𝐇𝐈𝐍𝐃𝐔𝐒𝐓𝐀𝐍𝐈 ( 🇧\u200a🇯\u200a)",
+            "location": "अखंड भारत",
+            "profile_image_url": "https://pbs.twimg.com/profile_images/1845795213262086146/UzZ6VU0M_normal.jpg",
+            "description": "💪🚨इंकलाब जिंदाबाद🚁🇮🇳\n💫हमें फॉलो नहीं प्यार चाहिए 💟",
+            "inferred_location": {
+                "city": "Unknown",
+                "county": "Unknown",
+                "state": "Unknown",
+                "latitude": 39.928393452818355,
+                "longitude": -98.66231937331581,
+            },
+        },
+        "place": None,
+    },
+    {
+        "id": 1932322032957714614,
+        "text": "RT @SnapMediaLive: 🚨 🌆 Woman Pleads for Babies’ Safety Amid LA Riots\nVideo Captures Desperate Scene on June 9, 2025\n📍Los Angeles, USA –\n• V…",
+        "created_at": datetime.datetime(
+            2025, 6, 10, 6, 20, 48, tzinfo=datetime.timezone.utc
+        ),
+        "author_id": 1506358044342505483,
+        "geo": None,
+        "user_profile": {
+            "username": "josephgjr3",
+            "name": "Josephgjr3",
+            "location": "New Mexico, USA",
+            "profile_image_url": "https://pbs.twimg.com/profile_images/1851141007393361920/CusBy8FZ_normal.jpg",
+            "description": "#notredame | Nuevo México I  #RomanReigns #RheaRipley #Dallascowboys #RepBX #spurs #wrestlingFan",
+            "inferred_location": {
+                "city": None,
+                "county": None,
+                "state": "New Mexico",
+                "latitude": 34.190357369225595,
+                "longitude": -105.66193207791765,
+            },
+        },
+        "place": None,
+    },
+    {
+        "id": 1932318562678341667,
+        "text": "🚨 🌆 Woman Pleads for Babies’ Safety Amid LA Riots\nVideo Captures Desperate Scene on June 9, 2025\n📍Los Angeles, USA –\n• Video shows woman begging rioters to spare her car with babies inside.\n• Incident tied to anti-ICE protests escalating on fourth day.\n• Sparks outrage over https://t.co/972HlXtcqh",
+        "created_at": datetime.datetime(
+            2025, 6, 10, 6, 7, tzinfo=datetime.timezone.utc
+        ),
+        "author_id": 1915796257437560832,
+        "geo": None,
+        "user_profile": {
+            "username": "SnapMediaLive",
+            "name": "Snap Media",
+            "location": "United Kingdom",
+            "profile_image_url": "https://pbs.twimg.com/profile_images/1927377736240136193/o4BuNQos_normal.jpg",
+            "description": "|| ₿ || Investing || Crypto || DeFi || Global News || Global Shocks || Sports || Viral Moments ||",
+            "inferred_location": {
+                "city": "Unknown",
+                "county": "Unknown",
+                "state": "Unknown",
+                "latitude": 39.75611017691271,
+                "longitude": -98.30854701803511,
+            },
+        },
+        "place": None,
+    },
+]

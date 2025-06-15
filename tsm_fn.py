@@ -1,10 +1,9 @@
 # Truthfulness Stance Map Functions
 import streamlit as st
 import pandas as pd
-import json
 import numpy as np
 from collections import Counter
-from constants import US_STATES_COORDS
+from constants import US_STATES_COORDS, VERDICT_MAPPING
 import spacy
 from credentials import (
     CONSUMER_KEY,
@@ -16,6 +15,9 @@ from credentials import (
 import tweepy
 from geopy.geocoders import Nominatim
 import datetime
+from LLM_fn import stance_analysis
+import math
+from collections import defaultdict
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -203,11 +205,20 @@ def infer_user_location(place):
 def get_claim_related_tweets(claim):
     doc = nlp(claim)
     keywords = set()
-    for token in doc:
-        if token.pos_ == "NOUN" or token.pos_ == "PROPN" or token.pos_ == "VERB":
-            keywords.add(token.text)
+    # Stepwise keyword extraction: NOUN -> NOUN+PROPN -> NOUN+PROPN+VERB
+    pos_priority = [["NOUN"], ["NOUN", "PROPN"], ["NOUN", "PROPN", "VERB"]]
+    idx = 0
+    while idx < len(pos_priority):
+        keywords.clear()
+        for token in doc:
+            if token.pos_ in pos_priority[idx]:
+                keywords.add(token.text)
+        if len(keywords) > 3 or idx == len(pos_priority) - 1:
+            break
+        idx += 1
     keywords = list(keywords)
-    query = " ".join(keywords) + " is:verified"
+    # exclude grok using operators
+    query = " ".join(keywords) + " -from:grok"
     # Load the Twitter client using tweepy
     client = tweepy.Client(
         bearer_token=BEARER_TOKEN,
@@ -216,7 +227,7 @@ def get_claim_related_tweets(claim):
         access_token=ACCESS_TOKEN,
         access_token_secret=ACCESS_SECRET,
     )
-    print(f"Searching for tweets related to the claim: {claim}")
+    print(f"Searching for tweets related to the claim: {claim}\nquery: {query}")
     # Search for tweets related to the claim
     tweets = client.search_recent_tweets(
         query=query,
@@ -250,37 +261,349 @@ def get_claim_related_tweets(claim):
             "created_at": tweet.created_at,
             "author_id": tweet.author_id,
             "geo": tweet.geo,
+            "user_profile": {
+                "username": None,
+                "name": None,
+                "location": None,
+                "profile_image_url": None,
+                "description": None,
+                "inferred_location": {
+                    "city": None,
+                    "county": None,
+                    "state": None,
+                    "latitude": None,
+                    "longitude": None,
+                },
+            },
+            "place": None,
         }
         # Add user profile info
         user_profile = users.get(tweet.author_id)
-        print(f"User Profile: {user_profile}")
         if user_profile:
-            tweet_info["user_profile"] = {
-                "username": user_profile.username,
-                "name": user_profile.name,
-                "location": getattr(user_profile, "location", None),
-                "profile_image_url": getattr(user_profile, "profile_image_url", None),
-                "description": getattr(user_profile, "description", None),
-            }
+            tweet_info["user_profile"]["username"] = user_profile.username
+            tweet_info["user_profile"]["name"] = user_profile.name
+            tweet_info["user_profile"]["location"] = getattr(
+                user_profile, "location", None
+            )
+            tweet_info["user_profile"]["profile_image_url"] = getattr(
+                user_profile, "profile_image_url", None
+            )
+            tweet_info["user_profile"]["description"] = getattr(
+                user_profile, "description", None
+            )
             if tweet_info["user_profile"]["location"]:
                 # Infer user location if available
                 city, county, state, latitude, longitude = infer_user_location(
                     tweet_info["user_profile"]["location"]
                 )
-                tweet_info["user_profile"]["inferred_location"] = {
-                    "city": city,
-                    "county": county,
-                    "state": state,
-                    "latitude": latitude,
-                    "longitude": longitude,
-                }
+                tweet_info["user_profile"]["inferred_location"]["city"] = city
+                tweet_info["user_profile"]["inferred_location"]["county"] = county
+                tweet_info["user_profile"]["inferred_location"]["state"] = state
+                tweet_info["user_profile"]["inferred_location"]["latitude"] = latitude
+                tweet_info["user_profile"]["inferred_location"]["longitude"] = longitude
         # Add place info if available
         if tweet.geo and hasattr(tweet.geo, "place_id"):
             place = client.get_place(place_id=tweet.geo.place_id)
             if place.data:
                 tweet_info["place"] = place.data
+        # last check the latitude and longitude
+        if (
+            tweet_info["user_profile"]["inferred_location"]["latitude"] is not None
+            and tweet_info["user_profile"]["inferred_location"]["longitude"] is not None
+        ):
+            tweet_info["user_profile"]["inferred_location"][
+                "latitude"
+            ] += np.random.normal(0, 0.2)
+            tweet_info["user_profile"]["inferred_location"][
+                "longitude"
+            ] += np.random.normal(0, 0.2)
+        else:
+            # use lat=39.8333, lon=–98.5855 at the placeholder for missing locations
+            tweet_info["user_profile"]["inferred_location"] = {
+                "city": "Unknown",
+                "county": "Unknown",
+                "state": "Unknown",
+                "latitude": 39.8333 + np.random.normal(0, 0.2),
+                "longitude": -98.5855 + np.random.normal(0, 0.2),
+            }
         tweet_data.append(tweet_info)
     return tweet_data
+
+
+def truthfulness_stance_detection(claim, tweets):
+    # use GPT for now, replace with our RATSD later
+    for tweet in tweets:
+        stance = stance_analysis(claim, tweet["text"])
+        tweet["stance"] = stance
+    # return as a DataFrame: City,Claim,Tweet,Latitude,Longitude,User,Timestamp,Stance,Category,State,Verdict
+    stance_df = pd.DataFrame(
+        [
+            {
+                "City": tweet["user_profile"]["inferred_location"]["city"],
+                "Claim": claim,
+                "Tweet": tweet["text"],
+                "Latitude": tweet["user_profile"]["inferred_location"]["latitude"],
+                "Longitude": tweet["user_profile"]["inferred_location"]["longitude"],
+                "User": tweet["user_profile"]["username"],
+                "Timestamp": tweet["created_at"],
+                "Stance": tweet["stance"],
+                "Category": None,  # Placeholder for category
+                "State": tweet["user_profile"]["inferred_location"]["state"],
+                "Verdict": None,  # Placeholder for verdict
+            }
+            for tweet in tweets
+        ]
+    )
+    return stance_df
+
+
+def render_stance_table(regional_stance_df):
+    """
+    Render the stance DataFrame as a table in Streamlit.
+    """
+    table_dict = defaultdict(int)
+    for _, row in regional_stance_df.iterrows():
+        verdict = VERDICT_MAPPING.get(row["Verdict"].lower(), "Unknown")
+        stance = row["Stance"]
+        table_dict[(stance, verdict)] += 1
+    table_dict[("Positive", "Precision")] = (
+        table_dict[("Positive", "Truth")]
+        / (
+            table_dict[("Positive", "Truth")]
+            + table_dict[("Positive", "Mixed")]
+            + table_dict[("Positive", "Misinfo")]
+        )
+        * 100
+    )
+    table_dict[("Neutral", "Precision")] = (
+        table_dict[("Neutral", "Truth")]
+        / (
+            table_dict[("Neutral", "Truth")]
+            + table_dict[("Neutral", "Mixed")]
+            + table_dict[("Neutral", "Misinfo")]
+        )
+        * 100
+    )
+    table_dict[("Negative", "Precision")] = (
+        table_dict[("Negative", "Truth")]
+        / (
+            table_dict[("Negative", "Truth")]
+            + table_dict[("Negative", "Mixed")]
+            + table_dict[("Negative", "Misinfo")]
+        )
+        * 100
+    )
+    table_dict[("Truth", "Recall")] = (
+        table_dict[("Positive", "Truth")]
+        / (
+            table_dict[("Positive", "Truth")]
+            + table_dict[("Neutral", "Truth")]
+            + table_dict[("Negative", "Truth")]
+        )
+        * 100
+    )
+    table_dict[("Mixed", "Recall")] = (
+        table_dict[("Positive", "Mixed")]
+        / (
+            table_dict[("Positive", "Mixed")]
+            + table_dict[("Neutral", "Mixed")]
+            + table_dict[("Negative", "Mixed")]
+        )
+        * 100
+    )
+    table_dict[("Misinfo", "Recall")] = (
+        table_dict[("Positive", "Misinfo")]
+        / (
+            table_dict[("Positive", "Misinfo")]
+            + table_dict[("Neutral", "Misinfo")]
+            + table_dict[("Negative", "Misinfo")]
+        )
+        * 100
+    )
+    # Add F1 scores
+    table_dict[("Positive", "F1")] = (
+        2
+        * (table_dict[("Positive", "Precision")] * table_dict[("Truth", "Recall")])
+        / (table_dict[("Positive", "Precision")] + table_dict[("Truth", "Recall")])
+    )
+    table_dict[("Neutral", "F1")] = (
+        2
+        * (table_dict[("Neutral", "Precision")] * table_dict[("Mixed", "Recall")])
+        / (table_dict[("Neutral", "Precision")] + table_dict[("Mixed", "Recall")])
+    )
+    table_dict[("Negative", "F1")] = (
+        2
+        * (table_dict[("Negative", "Precision")] * table_dict[("Misinfo", "Recall")])
+        / (table_dict[("Negative", "Precision")] + table_dict[("Misinfo", "Recall")])
+    )
+
+    rows = [
+        [
+            "⊕",
+            table_dict.get(("Positive", "Truth"), 0),
+            table_dict.get(("Positive", "Mixed"), 0),
+            table_dict.get(("Positive", "Misinfo"), 0),
+            table_dict.get(("Positive", "Precision"), None),
+            table_dict.get(("Positive", "F1"), None),
+        ],
+        [
+            "⊙",
+            table_dict.get(("Neutral", "Truth"), 0),
+            table_dict.get(("Neutral", "Mixed"), 0),
+            table_dict.get(("Neutral", "Misinfo"), 0),
+            table_dict.get(("Neutral", "Precision"), None),
+            table_dict.get(("Neutral", "F1"), None),
+        ],
+        [
+            "⊖",
+            table_dict.get(("Negative", "Truth"), 0),
+            table_dict.get(("Negative", "Mixed"), 0),
+            table_dict.get(("Negative", "Misinfo"), 0),
+            table_dict.get(("Negative", "Precision"), None),
+            table_dict.get(("Negative", "F1"), None),
+        ],
+        [
+            "Recall",
+            table_dict.get(("Truth", "Recall"), None),
+            table_dict.get(("Mixed", "Recall"), None),
+            table_dict.get(("Misinfo", "Recall"), None),
+            None,
+            None,
+        ],
+    ]
+
+    # Max values for bar scaling
+    max_truth = max(r[1] for r in rows[:3])
+    max_mixed = max(r[2] for r in rows[:3])
+    max_misinfo = max(r[3] for r in rows[:3])
+    max_value = max(max_truth, max_mixed, max_misinfo)
+
+    # Color per row index
+    row_colors = ["#28a745", "#fd7e14", "#dc3545"]  # green, orange, red
+
+    # Helper to create bar cell with label inside
+    def bar_cell(value, max_value, color):
+        if value is None:
+            return ""
+        width_pct = (math.log2(value + 1) / math.log2(max_value + 1)) * 100
+        return f"""
+        <div style='width: 100%; background: #e9ecef; height: 24px; border-radius: 4px; position: relative; overflow: hidden;'>
+            <div style='width: {width_pct:.1f}%; background: {color}; height: 100%; border-radius: 4px; text-align: right; padding-right: 4px; color: white; font-size: 12px; line-height: 24px;'>
+                {value:.1f}
+            </div>
+        </div>
+        """
+
+    # Build HTML table
+    html = """
+    <style>
+        table.custom-table {
+            border-collapse: collapse;
+            width: 100%;
+            font-family: sans-serif;
+        }
+        table.custom-table th, table.custom-table td {
+            border: 1px solid #ddd;
+            padding: 6px;
+            vertical-align: middle;
+        }
+    </style>
+    <table class="custom-table">
+        <tr>
+            <th>Stance</th>
+            <th>Truth</th>
+            <th>Mixed</th>
+            <th>Misinfo</th>
+            <th>Precision</th>
+            <th>F1</th>
+        </tr>
+    """
+
+    for i, row in enumerate(rows):
+        stance, truth, mixed, misinfo, precision, f1 = row
+        html += "<tr>"
+        html += f"<td>{stance}</td>"
+
+        # Bar or number for each cell
+        if i < 3:
+            color = row_colors[i]
+            html += f"<td>{bar_cell(truth, max_value, color)}</td>"
+            html += f"<td>{bar_cell(mixed, max_value, color)}</td>"
+            html += f"<td>{bar_cell(misinfo, max_value, color)}</td>"
+        else:
+            html += f"<td>{truth:.1f}</td>"
+            html += f"<td>{mixed:.1f}</td>"
+            html += f"<td>{misinfo:.1f}</td>"
+
+        html += f"<td>{'' if precision is None else f'{precision:.1f}'}</td>"
+        html += f"<td>{'' if f1 is None else f'{f1:.1f}'}</td>"
+        html += "</tr>"
+
+    html += "</table>"
+    return html, table_dict
+
+
+def render_oneline_stance_table(regional_stance_df):
+    """
+    Render the stance DataFrame as a one-line table in Streamlit as there is no verdict in online stance.
+    """
+    table_dict = defaultdict(int)
+    for _, row in regional_stance_df.iterrows():
+        stance = row["Stance"]
+        table_dict[stance] += 1
+
+    rows = [
+        ["⊕", table_dict.get("Positive", 0)],
+        ["⊙", table_dict.get("Neutral", 0)],
+        ["⊖", table_dict.get("Negative", 0)],
+    ]
+
+    # Build HTML table
+    html = """
+    <style>
+        table.custom-table {
+            border-collapse: collapse;
+            width: 100%;
+            font-family: sans-serif;
+        }
+        table.custom-table th, table.custom-table td {
+            border: 1px solid #ddd;
+            padding: 6px;
+            vertical-align: middle;
+        }
+    </style>
+    <table class="custom-table">
+        <tr>
+            <th>Stance</th>
+            <th>Count</th>
+        </tr>
+    """
+
+    # Max value for scaling
+    max_count = max(row[1] for row in rows)
+
+    # Helper to create bar cell with label inside
+    def bar_cell(value, max_value):
+        if value is None:
+            return ""
+        width_pct = (value / (max_value + 1)) * 100
+        return f"""
+        <div style='width: 100%; background: #e9ecef; height: 24px; border-radius: 4px; position: relative; overflow: hidden;'>
+            <div style='width: {width_pct:.1f}%; background: #007bff; height: 100%; border-radius: 4px; text-align: right; padding-right: 4px; color: white; font-size: 12px; line-height: 24px;'>
+                {value}
+            </div>
+        </div>
+        """
+
+    for row in rows:
+        stance, count = row
+        html += "<tr>"
+        html += f"<td>{stance}</td>"
+        html += f"<td>{bar_cell(count, max_count)}</td>"
+        html += "</tr>"
+
+    html += "</table>"
+    return html, table_dict
 
 
 if __name__ == "__main__":
@@ -297,171 +620,13 @@ if __name__ == "__main__":
     # taxonomy = get_taxonomy()
     # print(taxonomy)
 
-    # tweets = get_claim_related_tweets("Biden is the best president in US history")
-    tweets = [
-        {
-            "id": 1933701786055196888,
-            "text": "RT @WesternDecline_: @SenAdamSchiff Biden pardoned the most amount of people out of any President in all of US history.\n\nLet that sink in.",
-            "created_at": datetime.datetime(
-                2025, 6, 14, 1, 43, 26, tzinfo=datetime.timezone.utc
-            ),
-            "author_id": 1599215772274159616,
-            "geo": None,
-            "user_profile": {
-                "username": "Bev_Wasson",
-                "name": "Beverly Wasson",
-                "location": None,
-                "profile_image_url": "https://pbs.twimg.com/profile_images/1629314117906628608/FGMvjcZi_normal.jpg",
-                "description": "",
-            },
-        },
-        {
-            "id": 1933680090363080709,
-            "text": "@AesPolitics1 Biden was THE worst president in US history.",
-            "created_at": datetime.datetime(
-                2025, 6, 14, 0, 17, 14, tzinfo=datetime.timezone.utc
-            ),
-            "author_id": 1312197301,
-            "geo": None,
-            "user_profile": {
-                "username": "504CNM",
-                "name": "504girl ⚜️",
-                "location": "United States",
-                "profile_image_url": "https://pbs.twimg.com/profile_images/1906011010520989696/6xNdwPIb_normal.jpg",
-                "description": "🇺🇸❤️🇺🇸Love God ,my country, pro-life, 🇺🇸❤️🇺🇸 #MAGA Happily married💍 TS-@504girl🚫DM",
-            },
-        },
-        {
-            "id": 1933670187670384760,
-            "text": "@cb_doge Fun Fact: Donald Trump will be the oldest President in all of US history by the end of his 2nd term, a few hundred days older than Joe Biden when he finished his term in 2025.",
-            "created_at": datetime.datetime(
-                2025, 6, 13, 23, 37, 53, tzinfo=datetime.timezone.utc
-            ),
-            "author_id": 1359631662636806146,
-            "geo": None,
-            "user_profile": {
-                "username": "WesternDecline_",
-                "name": "Western Decline",
-                "location": None,
-                "profile_image_url": "https://pbs.twimg.com/profile_images/1913161359958667264/DtTEkbO7_normal.jpg",
-                "description": "Documenting the decline of Western civilization.",
-            },
-        },
-        {
-            "id": 1933668591661957210,
-            "text": "@NotaRINO2025 @GavinNewsom Give me a break. You’d rather have a Manchurian candidate than an actual President. Joe Biden was the worst President in US history.",
-            "created_at": datetime.datetime(
-                2025, 6, 13, 23, 31, 32, tzinfo=datetime.timezone.utc
-            ),
-            "author_id": 1586083916967968768,
-            "geo": None,
-            "user_profile": {
-                "username": "MichaelKeveryn",
-                "name": "Storm Tracker",
-                "location": "Florida ",
-                "profile_image_url": "https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png",
-                "description": "I'm a patriot. Maga, Husband, Father, Grandfather, and golfer. Trump must win this election or we will all be in a dystopian nightmare.",
-            },
-        },
-        {
-            "id": 1933659064732422495,
-            "text": "@DisavowTrump20 Nope.  Biden will go down in history as the most corrupt president. The only president in US history to give out half a dozen pardons to family members. Preemptive pardons were issued to 6 family members. From January 1, 2014, through 01/20/25\n- Hunter Biden - his son, pardoned",
-            "created_at": datetime.datetime(
-                2025, 6, 13, 22, 53, 41, tzinfo=datetime.timezone.utc
-            ),
-            "author_id": 1380677392520376323,
-            "geo": None,
-            "user_profile": {
-                "username": "WTFpeople2022",
-                "name": "WTFPeople",
-                "location": "Washington, DC",
-                "profile_image_url": "https://pbs.twimg.com/profile_images/1531010046217404417/dxoOhYQf_normal.jpg",
-                "description": "",
-            },
-        },
-        {
-            "id": 1933654971968610568,
-            "text": "RT @WesternDecline_: @SenAdamSchiff Biden pardoned the most amount of people out of any President in all of US history.\n\nLet that sink in.",
-            "created_at": datetime.datetime(
-                2025, 6, 13, 22, 37, 25, tzinfo=datetime.timezone.utc
-            ),
-            "author_id": 1585931231316918273,
-            "geo": None,
-            "user_profile": {
-                "username": "vobitaka",
-                "name": "man in town",
-                "location": "Cleveland, OH",
-                "profile_image_url": "https://pbs.twimg.com/profile_images/1802107370606100480/2aeW3zyi_normal.jpg",
-                "description": "",
-            },
-        },
-        {
-            "id": 1933654276108399021,
-            "text": "@ChrisDJackson @JoeBiden So, lots of crooks and thieves take the train. Biden will go down in history as the most corrupt president. The only president in US history to give out half a dozen pardons to family members. Preemptive pardons were issued to 6 family members. From January 1, 2014, through",
-            "created_at": datetime.datetime(
-                2025, 6, 13, 22, 34, 39, tzinfo=datetime.timezone.utc
-            ),
-            "author_id": 1380677392520376323,
-            "geo": None,
-            "user_profile": {
-                "username": "WTFpeople2022",
-                "name": "WTFPeople",
-                "location": "Washington, DC",
-                "profile_image_url": "https://pbs.twimg.com/profile_images/1531010046217404417/dxoOhYQf_normal.jpg",
-                "description": "",
-            },
-        },
-        {
-            "id": 1933653886021095682,
-            "text": "@SenAdamSchiff Biden pardoned the most amount of people out of any President in all of US history.\n\nLet that sink in.",
-            "created_at": datetime.datetime(
-                2025, 6, 13, 22, 33, 6, tzinfo=datetime.timezone.utc
-            ),
-            "author_id": 1359631662636806146,
-            "geo": None,
-            "user_profile": {
-                "username": "WesternDecline_",
-                "name": "Western Decline",
-                "location": None,
-                "profile_image_url": "https://pbs.twimg.com/profile_images/1913161359958667264/DtTEkbO7_normal.jpg",
-                "description": "Documenting the decline of Western civilization.",
-            },
-        },
-        {
-            "id": 1933644342884798871,
-            "text": "@ttccai1 @_SmokeyGirl25 @PAYthe_PIPER @PaulMer53 @Hawkesbay69 @RockyMtMama1 @DragonSword778 @45johnmac @GilbertWanda @ArmandKleinX @DoraDallas6 @Zegdie @janninereid1 @PecanC8 @m86742 @ToniLL22 @PriamtheB @Lindaprentice16 @Ilegvm @NancyMar2022 @sxdoc @Donald_Army @emma6USA Biden’s presidency was the biggest scam in US history! I’m grateful for President Trump. \nThank you @ttccai1 ❤️❤️👑👑❤️❤️ https://t.co/EV5ZCXcaqB",
-            "created_at": datetime.datetime(
-                2025, 6, 13, 21, 55, 11, tzinfo=datetime.timezone.utc
-            ),
-            "author_id": 1392962413255970817,
-            "geo": None,
-            "user_profile": {
-                "username": "x4Eileen",
-                "name": "Eileen Bridget🌸",
-                "location": None,
-                "profile_image_url": "https://pbs.twimg.com/profile_images/1832473649720258560/YJDnhh9o_normal.jpg",
-                "description": "RN BSN🌟Daughter of a Marine🌟 Veteran advocate 🌟Dont call it gun control, it’s civilian disarmament 2A 🌟ProLife🌟",
-            },
-        },
-        {
-            "id": 1933633786828439676,
-            "text": "RT @Suzierizzo1: President Barack Obama is one of the Greatest Presidents in History and he warned us all along with President Biden what T…",
-            "created_at": datetime.datetime(
-                2025, 6, 13, 21, 13, 14, tzinfo=datetime.timezone.utc
-            ),
-            "author_id": 777349670179774464,
-            "geo": None,
-            "user_profile": {
-                "username": "Trib3zz",
-                "name": "Brian Falagan",
-                "location": "San Diego, CA",
-                "profile_image_url": "https://pbs.twimg.com/profile_images/1615645346427961344/uCDnZJWB_normal.jpg",
-                "description": "Apparently I sound like @GstaAsim",
-            },
-        },
-    ]
-    for tweet in tweets:
-        user_geo = None
-        if tweet["user_profile"]["location"]:
-            user_geo = infer_user_location(tweet["user_profile"]["location"])
-        print("User Geo:", user_geo)
+    tweets = get_claim_related_tweets(
+        "A video shows woman exiting her car during the 2025 Los Angeles protests, shouting, “I have babies in the car!”"
+    )
+    print(tweets)
+
+    # for tweet in tweets:
+    #     user_geo = None
+    #     if tweet["user_profile"]["location"]:
+    #         user_geo = infer_user_location(tweet["user_profile"]["location"])
+    #     print("User Geo:", user_geo)
