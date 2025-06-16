@@ -43,7 +43,7 @@ stack-data==0.6.3
 streamlit==1.43.2
 streamlit_folium==0.24.0
 tenacity==9.0.0
-thinc==8.2.0
+thinc==8.2.2
 toml==0.10.2
 tornado==6.4.2
 tqdm==4.67.1
