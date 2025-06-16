@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from collections import Counter
-from constants import US_STATES_COORDS, VERDICT_MAPPING
+from constants import US_STATES_COORDS, VERDICT_MAPPING, VERDICT_FORMATTER
 import spacy
 from credentials import (
     CONSUMER_KEY,
@@ -18,6 +18,8 @@ import datetime
 from LLM_fn import stance_analysis
 import math
 from collections import defaultdict
+import folium
+from folium.plugins import MarkerCluster
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -108,7 +110,6 @@ def get_taxonomy():
     taxonomy_csv = "./data/coronavirus_taxonomy.csv"
     taxonomy_df = pd.read_csv(taxonomy_csv)
     # Convert the DataFrame to a dictionary
-    print(taxonomy_df.head())
     broad2claim = {}
     broad2medium = {}
     medium2detailed = {}
@@ -368,55 +369,61 @@ def render_stance_table(regional_stance_df):
         table_dict[(stance, verdict)] += 1
     table_dict[("Positive", "Precision")] = (
         table_dict[("Positive", "Truth")]
-        / (
+        / max(
             table_dict[("Positive", "Truth")]
             + table_dict[("Positive", "Mixed")]
-            + table_dict[("Positive", "Misinfo")]
+            + table_dict[("Positive", "Misinfo")],
+            1,
         )
         * 100
     )
     table_dict[("Neutral", "Precision")] = (
         table_dict[("Neutral", "Truth")]
-        / (
+        / max(
             table_dict[("Neutral", "Truth")]
             + table_dict[("Neutral", "Mixed")]
-            + table_dict[("Neutral", "Misinfo")]
+            + table_dict[("Neutral", "Misinfo")],
+            1,
         )
         * 100
     )
     table_dict[("Negative", "Precision")] = (
         table_dict[("Negative", "Truth")]
-        / (
+        / max(
             table_dict[("Negative", "Truth")]
             + table_dict[("Negative", "Mixed")]
-            + table_dict[("Negative", "Misinfo")]
+            + table_dict[("Negative", "Misinfo")],
+            1,
         )
         * 100
     )
     table_dict[("Truth", "Recall")] = (
         table_dict[("Positive", "Truth")]
-        / (
+        / max(
             table_dict[("Positive", "Truth")]
             + table_dict[("Neutral", "Truth")]
-            + table_dict[("Negative", "Truth")]
+            + table_dict[("Negative", "Truth")],
+            1,
         )
         * 100
     )
     table_dict[("Mixed", "Recall")] = (
         table_dict[("Positive", "Mixed")]
-        / (
+        / max(
             table_dict[("Positive", "Mixed")]
             + table_dict[("Neutral", "Mixed")]
-            + table_dict[("Negative", "Mixed")]
+            + table_dict[("Negative", "Mixed")],
+            1,
         )
         * 100
     )
     table_dict[("Misinfo", "Recall")] = (
         table_dict[("Positive", "Misinfo")]
-        / (
+        / max(
             table_dict[("Positive", "Misinfo")]
             + table_dict[("Neutral", "Misinfo")]
-            + table_dict[("Negative", "Misinfo")]
+            + table_dict[("Negative", "Misinfo")],
+            1,
         )
         * 100
     )
@@ -424,17 +431,26 @@ def render_stance_table(regional_stance_df):
     table_dict[("Positive", "F1")] = (
         2
         * (table_dict[("Positive", "Precision")] * table_dict[("Truth", "Recall")])
-        / (table_dict[("Positive", "Precision")] + table_dict[("Truth", "Recall")])
+        / max(
+            table_dict[("Positive", "Precision")] + table_dict[("Truth", "Recall")],
+            1,
+        )
     )
     table_dict[("Neutral", "F1")] = (
         2
         * (table_dict[("Neutral", "Precision")] * table_dict[("Mixed", "Recall")])
-        / (table_dict[("Neutral", "Precision")] + table_dict[("Mixed", "Recall")])
+        / max(
+            table_dict[("Neutral", "Precision")] + table_dict[("Mixed", "Recall")],
+            1,
+        )
     )
     table_dict[("Negative", "F1")] = (
         2
         * (table_dict[("Negative", "Precision")] * table_dict[("Misinfo", "Recall")])
-        / (table_dict[("Negative", "Precision")] + table_dict[("Misinfo", "Recall")])
+        / max(
+            table_dict[("Negative", "Precision")] + table_dict[("Misinfo", "Recall")],
+            1,
+        )
     )
 
     rows = [
@@ -476,7 +492,9 @@ def render_stance_table(regional_stance_df):
     max_truth = max(r[1] for r in rows[:3])
     max_mixed = max(r[2] for r in rows[:3])
     max_misinfo = max(r[3] for r in rows[:3])
-    max_value = max(max_truth, max_mixed, max_misinfo)
+    max_value = max(
+        max_truth, max_mixed, max_misinfo, 1
+    )  # Ensure max_value is at least 1
 
     # Color per row index
     row_colors = ["#28a745", "#fd7e14", "#dc3545"]  # green, orange, red
@@ -485,6 +503,9 @@ def render_stance_table(regional_stance_df):
     def bar_cell(value, max_value, color):
         if value is None:
             return ""
+        max_value = max(
+            max_value, 1
+        )  # Ensure max_value is at least 1 to avoid division by zero
         width_pct = (math.log2(value + 1) / math.log2(max_value + 1)) * 100
         return f"""
         <div style='width: 100%; background: #e9ecef; height: 24px; border-radius: 4px; position: relative; overflow: hidden;'>
@@ -514,7 +535,7 @@ def render_stance_table(regional_stance_df):
             <th>Truth</th>
             <th>Mixed</th>
             <th>Misinfo</th>
-            <th>Precision</th>
+            <th>Prec</th>
             <th>F1</th>
         </tr>
     """
@@ -604,6 +625,70 @@ def render_oneline_stance_table(regional_stance_df):
 
     html += "</table>"
     return html, table_dict
+
+
+def create_map_folium(stance_df):
+    center_lat, center_lon = 40, -100
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=4)
+
+    # Add state layer (GeoJSON)
+    states_url = "https://raw.githubusercontent.com/giswqs/leafmap/master/examples/data/us_states.json"
+    folium.GeoJson(
+        states_url,
+        name="US States",
+        zoom_on_click=True,
+        highlight_function=lambda feature: {
+            "fillColor": (
+                "green" if "e" in feature["properties"]["name"].lower() else "#ffff00"
+            ),
+        },
+    ).add_to(m)
+
+    marker_cluster = MarkerCluster().add_to(m)
+    # only first 10 rows
+    stance_df_on_map = stance_df.head(200)
+    if len(stance_df) > 400:
+        # select 400 rows with interval of 3
+        stance_df_on_map = stance_df[::3].head(400)
+    else:
+        stance_df_on_map = stance_df
+    color_mp = {"Positive": "green", "Neutral": "orange", "Negative": "red"}
+    for idx, row in stance_df_on_map.iterrows():
+        lat = row["Latitude"]
+        lon = row["Longitude"]
+        if np.isnan(lat) or np.isnan(lon):
+            if row["State"] not in US_STATES_COORDS:
+                continue
+            else:
+                lat = US_STATES_COORDS[row["State"]][0]
+                lon = US_STATES_COORDS[row["State"]][1]
+        stance = row["Stance"]
+        color = color_mp.get(stance, "gray")
+        verdict = row["Verdict"]
+        if pd.isna(verdict):
+            row["Verdict"] = "unknown"
+        elif row["Verdict"] == False:
+            row["Verdict"] = "false"
+        popup = f"""
+            <b>Tweet</b>: {row['Tweet']}<br>
+            <b>Claim:</b> {row['Claim']}<br>
+            <b>Claim verdict:</b> {VERDICT_FORMATTER[row['Verdict'].lower()]}<br>
+            {"<b>State:</b> " + row['State'] + "<br>" if row['State'] is not None and not pd.isna(row['State']) else ""}
+            {"<b>City:</b> " + row['City'] + "<br>" if row['City'] is not None and not pd.isna(row['City']) else ""}
+            <hr style="margin: 4px 0; border: none; height: 1px; background-color: #ccc;">
+            <b>Stance:</b> {stance}
+            """
+        icons = {
+            "Positive": "plus-circle",
+            "Neutral": "dot-circle",
+            "Negative": "minus-circle",
+        }
+        folium.Marker(
+            location=[lat, lon],
+            popup=folium.Popup(popup, max_width=400),
+            icon=folium.Icon(icon=icons.get(stance), prefix="fa", color=color),
+        ).add_to(marker_cluster)
+    return m
 
 
 if __name__ == "__main__":
