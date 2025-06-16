@@ -398,9 +398,7 @@ with col_explaination:
         - Tweet: {tweet}
         - Stance: {stance}
         """
-        explanation = generate_report(
-            explanation_prompt
-        )  # Assuming `generate_report` interacts with the LLM
+        explanation = generate_report(explanation_prompt, st.secrets["OPENAI_API_KEY"])
         return explanation
 
     with st.expander("Explain stance for the selected tweet", expanded=False):
@@ -453,7 +451,7 @@ with col_explaination:
             """
         if st.button("Generate Report", key="generate_report"):
             with st.spinner("Generating report..."):
-                report = generate_report(report_prompt)
+                report = generate_report(report_prompt, st.secrets["OPENAI_API_KEY"])
                 st.session_state.generated_report = report
 
         # Display the report if it exists in session state

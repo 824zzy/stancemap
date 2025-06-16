@@ -1,8 +1,7 @@
-from credentials import OPENAI_API_KEY
 import openai
 
 
-def generate_report(prompt):
+def generate_report(prompt, OPENAI_API_KEY):
     """
     Generates a report based on the provided prompt using OpenAI's latest API.
 
@@ -15,7 +14,7 @@ def generate_report(prompt):
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": prompt},
@@ -25,9 +24,11 @@ def generate_report(prompt):
     return response.choices[0].message.content
 
 
-def stance_analysis(claim, tweet):
+def stance_analysis(claim, tweet, OPENAI_API_KEY):
+    """
+    TODO: For online search, analyze the stance of a tweet toward a factual claim using RATSD model.
+    """
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -52,15 +53,4 @@ def stance_analysis(claim, tweet):
 
 if __name__ == "__main__":
     # Example usage
-    # prompt = (
-    #     "Generate a report on the current state of renewable energy adoption worldwide."
-    # )
-    # report = generate_report(prompt)
-    # print(report)
-
-    claim = "The Earth is flat."
-    tweet = (
-        "I believe the Earth is flat because I don't see any curvature from my window."
-    )
-    stance = stance_analysis(claim, tweet)
-    print(f"Stance on the claim '{claim}': {stance}")
+    pass

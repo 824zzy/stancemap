@@ -5,13 +5,6 @@ import numpy as np
 from collections import Counter
 from constants import US_STATES_COORDS, VERDICT_MAPPING, VERDICT_FORMATTER
 import spacy
-from credentials import (
-    CONSUMER_KEY,
-    CONSUMER_SECRET,
-    ACCESS_TOKEN,
-    ACCESS_SECRET,
-    BEARER_TOKEN,
-)
 import tweepy
 from geopy.geocoders import Nominatim
 import datetime
@@ -222,11 +215,11 @@ def get_claim_related_tweets(claim):
     query = " ".join(keywords) + " -from:grok"
     # Load the Twitter client using tweepy
     client = tweepy.Client(
-        bearer_token=BEARER_TOKEN,
-        consumer_key=CONSUMER_KEY,
-        consumer_secret=CONSUMER_SECRET,
-        access_token=ACCESS_TOKEN,
-        access_token_secret=ACCESS_SECRET,
+        bearer_token=st.secrets["BEARER_TOKEN"],
+        consumer_key=st.secrets["CONSUMER_KEY"],
+        consumer_secret=st.secrets["CONSUMER_SECRET"],
+        access_token=st.secrets["ACCESS_TOKEN"],
+        access_token_secret=st.secrets["ACCESS_SECRET"],
     )
     print(f"Searching for tweets related to the claim: {claim}\nquery: {query}")
     # Search for tweets related to the claim
@@ -334,7 +327,7 @@ def get_claim_related_tweets(claim):
 def truthfulness_stance_detection(claim, tweets):
     # use GPT for now, replace with our RATSD later
     for tweet in tweets:
-        stance = stance_analysis(claim, tweet["text"])
+        stance = stance_analysis(claim, tweet["text"], st.secrets["OPENAI_API_KEY"])
         tweet["stance"] = stance
     # return as a DataFrame: City,Claim,Tweet,Latitude,Longitude,User,Timestamp,Stance,Category,State,Verdict
     stance_df = pd.DataFrame(
