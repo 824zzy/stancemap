@@ -67,4 +67,4 @@ wrapt==1.17.2
 xyzservices==2025.1.0
 tweepy==4.14.0
 geopy==2.4.1
-openai==1.42.0
+openai==1.55.3
