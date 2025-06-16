@@ -198,10 +198,15 @@ typed_factual_claim = st.sidebar.text_area(
     placeholder="A video shows woman exiting her car during the 2025 Los Angeles protests, shouting, “I have babies in the car!",
     height=100,
 )
+print(
+    "Typed factual claim in session_state: ",
+    st.session_state.get("typed_factual_claim", ""),
+)
+print("Typed factual claim: ", typed_factual_claim)
 if typed_factual_claim != st.session_state.get("typed_factual_claim", ""):
     st.session_state.typed_factual_claim = typed_factual_claim
     if st.session_state.typed_factual_claim == "":
-        st.session_state.typed_factual_claim = None
+        print("Typed factual claim is empty, resetting session state")
         st.rerun()
     else:
         tweets = get_claim_related_tweets(st.session_state.typed_factual_claim)
@@ -214,7 +219,7 @@ if typed_factual_claim != st.session_state.get("typed_factual_claim", ""):
         st.session_state.online_stance_df = online_stance_df
         print("typed factual claim stance_df: ", online_stance_df)
         st.rerun()
-print("Typed factual claim: ", st.session_state.get("typed_factual_claim", ""))
+
 
 # Customize the sidebar
 markdown = """
@@ -302,78 +307,86 @@ col_map, col_explaination = st.columns([3, 3])
 
 with col_map:
     # Render the map in the left column, filling the 3/4 width
-    if has_typed_factual_claim:
-        m = create_map_folium(st.session_state.online_stance_df)
-    else:
-        m = create_map_folium(stance_df)
-    map_data = st_folium(m, height=420, width="100%")  # Let Streamlit fill the column
+    try:
+        if has_typed_factual_claim:
+            m = create_map_folium(st.session_state.online_stance_df)
+        else:
+            m = create_map_folium(stance_df)
+        map_data = st_folium(
+            m, height=420, width="100%"
+        )  # Let Streamlit fill the column
+    except Exception as e:
+        st.error("Failed to render the map. Please try refreshing the page.")
+        st.write(f"Error details: {e}")
+        map_data = None
 
     # Curate data for rendering the table
-    # limit the stance_df to the selected state
-    if has_typed_factual_claim:
-        _df = st.session_state.online_stance_df
-    else:
-        _df = stance_df
+    if map_data:
+        # limit the stance_df to the selected state
+        if has_typed_factual_claim:
+            _df = st.session_state.online_stance_df
+        else:
+            _df = stance_df
 
-    if st.session_state.selected_state == "All":
-        regional_stance_df = _df
-    else:
-        regional_stance_df = _df[_df["State"] == st.session_state.selected_state]
+        if st.session_state.selected_state == "All":
+            regional_stance_df = _df
+        else:
+            regional_stance_df = _df[_df["State"] == st.session_state.selected_state]
 
-    if has_typed_factual_claim:
-        table_html, table_dict = render_oneline_stance_table(
-            regional_stance_df=regional_stance_df,
-        )
-    else:
-        table_html, table_dict = render_stance_table(
-            regional_stance_df=regional_stance_df
-        )
-
-    st.markdown(table_html, unsafe_allow_html=True)
-
-    st.write("State level (Y-axis represents log10(tweet count))")
-    if has_typed_factual_claim:
-        # Use the online stance dataframe for the typed factual claim
-        if "State" in st.session_state.online_stance_df.columns:
-            state_stance_df = (
-                st.session_state.online_stance_df.groupby(["State", "Stance"])
-                .size()
-                .unstack()
-                .reset_index()
+        if has_typed_factual_claim:
+            table_html, table_dict = render_oneline_stance_table(
+                regional_stance_df=regional_stance_df,
             )
         else:
-            state_stance_df = pd.DataFrame(
-                columns=["State", "Positive", "Neutral", "Negative"]
+            table_html, table_dict = render_stance_table(
+                regional_stance_df=regional_stance_df
             )
-    else:
-        state_stance_df = (
-            stance_df.groupby(["State", "Stance"]).size().unstack().reset_index()
-        )
-    # if Positive, Neutral, Negative columns are not present, fill them with 0
-    if "Positive" not in state_stance_df.columns:
-        state_stance_df["Positive"] = 0
-    if "Neutral" not in state_stance_df.columns:
-        state_stance_df["Neutral"] = 0
-    if "Negative" not in state_stance_df.columns:
-        state_stance_df["Negative"] = 0
 
-    # Apply log10 transformation to the counts
-    state_stance_df["Positive"] = state_stance_df["Positive"].apply(
-        lambda x: math.log10(x + 1)
-    )
-    state_stance_df["Neutral"] = state_stance_df["Neutral"].apply(
-        lambda x: math.log10(x + 1)
-    )
-    state_stance_df["Negative"] = state_stance_df["Negative"].apply(
-        lambda x: math.log10(x + 1)
-    )
-    st.bar_chart(
-        state_stance_df,
-        x="State",
-        y=["Positive", "Neutral", "Negative"],
-        color=["#C82820", "#FFA500", "#61A41D"],
-        use_container_width=True,  # Fit the chart to the column width
-    )
+        st.markdown(table_html, unsafe_allow_html=True)
+
+        st.write("State level (Y-axis represents log10(tweet count))")
+        if has_typed_factual_claim:
+            # Use the online stance dataframe for the typed factual claim
+            if "State" in st.session_state.online_stance_df.columns:
+                state_stance_df = (
+                    st.session_state.online_stance_df.groupby(["State", "Stance"])
+                    .size()
+                    .unstack()
+                    .reset_index()
+                )
+            else:
+                state_stance_df = pd.DataFrame(
+                    columns=["State", "Positive", "Neutral", "Negative"]
+                )
+        else:
+            state_stance_df = (
+                stance_df.groupby(["State", "Stance"]).size().unstack().reset_index()
+            )
+        # if Positive, Neutral, Negative columns are not present, fill them with 0
+        if "Positive" not in state_stance_df.columns:
+            state_stance_df["Positive"] = 0
+        if "Neutral" not in state_stance_df.columns:
+            state_stance_df["Neutral"] = 0
+        if "Negative" not in state_stance_df.columns:
+            state_stance_df["Negative"] = 0
+
+        # Apply log10 transformation to the counts
+        state_stance_df["Positive"] = state_stance_df["Positive"].apply(
+            lambda x: math.log10(x + 1)
+        )
+        state_stance_df["Neutral"] = state_stance_df["Neutral"].apply(
+            lambda x: math.log10(x + 1)
+        )
+        state_stance_df["Negative"] = state_stance_df["Negative"].apply(
+            lambda x: math.log10(x + 1)
+        )
+        st.bar_chart(
+            state_stance_df,
+            x="State",
+            y=["Positive", "Neutral", "Negative"],
+            color=["#C82820", "#FFA500", "#61A41D"],
+            use_container_width=True,  # Fit the chart to the column width
+        )
 
 with col_explaination:
     # Apply custom CSS for the expander width and scrolling
