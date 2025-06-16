@@ -97,7 +97,7 @@ if st.session_state.get("selected_categories") == ["Coronavirus"]:
             sidebar_selected_medium_topics = st.multiselect(
                 f"Select medium topics under {selected_broad_topics_str}",
                 medium_topic_options,
-                default=st.session_state.get("selected_medium_topic", []),
+                default=st.session_state.get("selected_medium_topics", []),
                 disabled=has_typed_factual_claim,
             )
             if sidebar_selected_medium_topics != st.session_state.get(
@@ -121,7 +121,7 @@ if st.session_state.get("selected_categories") == ["Coronavirus"]:
                 sidebar_selected_detailed_topics = st.multiselect(
                     f"Select detailed topics under {selected_medium_topics_str}",
                     detailed_topic_options,
-                    default=st.session_state.get("selected_detailed_topic", None),
+                    default=st.session_state.get("selected_detailed_topics", None),
                     disabled=has_typed_factual_claim,
                 )
                 if sidebar_selected_detailed_topics != st.session_state.get(
@@ -138,10 +138,6 @@ category2claims = get_category2claim(stance_df)
 for c in st.session_state.selected_categories:
     claims_under_categories.extend(category2claims[c])
 claims_under_topics = []
-print("-------")
-print(st.session_state.get("selected_detailed_topics"))
-print(st.session_state.get("selected_medium_topics"))
-print(st.session_state.get("selected_broad_topics"))
 if (
     st.session_state.get("selected_detailed_topics") is not None
     and st.session_state.get("selected_medium_topics") is not None
@@ -149,14 +145,19 @@ if (
 ):
     for medium_topic in st.session_state.selected_medium_topics:
         for detailed_topic in st.session_state.selected_detailed_topics:
-            claims_under_topics.extend(medium2detailed[medium_topic][detailed_topic])
+            if medium2detailed.get(medium_topic) is not None:
+                if detailed_topic in medium2detailed[medium_topic]:
+                    claims_under_topics.extend(
+                        medium2detailed[medium_topic][detailed_topic]
+                    )
 elif (
     st.session_state.get("selected_medium_topics") is not None
     and st.session_state.get("selected_broad_topics") is not None
 ):
     for broad_topic in st.session_state.selected_broad_topics:
         for medium_topic in st.session_state.selected_medium_topics:
-            claims_under_topics.extend(broad2medium[broad_topic][medium_topic])
+            if broad2medium[broad_topic].get(medium_topic) is not None:
+                claims_under_topics.extend(broad2medium[broad_topic][medium_topic])
 elif st.session_state.get("selected_broad_topics") is not None:
     for broad_topic in st.session_state.selected_broad_topics:
         claims_under_topics.extend(broad2claim[broad_topic])
@@ -164,8 +165,6 @@ elif st.session_state.get("selected_broad_topics") is not None:
 # use claims under topics when there are selected topics, otherwise use claims under categories
 claims_under_categories = set(claims_under_categories)
 claims_under_topics = set(claims_under_topics)
-print("claims under categories: ", len(claims_under_categories))
-print("claims under topics: ", len(claims_under_topics))
 if len(claims_under_topics) == 0:
     claim_candidates = claims_under_categories
 else:
@@ -179,10 +178,7 @@ selected_factual_claims = st.sidebar.multiselect(
     default=["All"],
     disabled=has_typed_factual_claim,
 )
-print("selected_factual_claims: ", selected_factual_claims)
-print("claim_candidates: ", len(claim_candidates))
 if "All" in selected_factual_claims:
-    print("All selected, using all claims")
     # use the subset of the dataframe based on the selected category
     stance_df = stance_df[stance_df["Claim"].apply(lambda x: x in claim_candidates)]
 else:
@@ -190,7 +186,6 @@ else:
     stance_df = stance_df[
         stance_df["Claim"].apply(lambda x: x in selected_factual_claims)
     ]
-print("qwer", stance_df.shape)
 
 # Allow user to manually type a factual claim
 typed_factual_claim = st.sidebar.text_area(
@@ -198,15 +193,9 @@ typed_factual_claim = st.sidebar.text_area(
     placeholder="A video shows woman exiting her car during the 2025 Los Angeles protests, shouting, “I have babies in the car!",
     height=100,
 )
-print(
-    "Typed factual claim in session_state: ",
-    st.session_state.get("typed_factual_claim", ""),
-)
-print("Typed factual claim: ", typed_factual_claim)
 if typed_factual_claim != st.session_state.get("typed_factual_claim", ""):
     st.session_state.typed_factual_claim = typed_factual_claim
     if st.session_state.typed_factual_claim == "":
-        print("Typed factual claim is empty, resetting session state")
         st.rerun()
     else:
         tweets = get_claim_related_tweets(st.session_state.typed_factual_claim)
