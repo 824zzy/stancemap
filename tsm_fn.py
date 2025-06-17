@@ -211,6 +211,9 @@ def get_claim_related_tweets(claim):
             break
         idx += 1
     keywords = list(keywords)
+    if len(keywords) == 0:
+        print("No keywords found in the claim.")
+        return []
     # exclude grok using operators
     query = " ".join(keywords) + " -from:grok"
     # Load the Twitter client using tweepy
@@ -225,7 +228,7 @@ def get_claim_related_tweets(claim):
     # Search for tweets related to the claim
     tweets = client.search_recent_tweets(
         query=query,
-        max_results=10,
+        max_results=30,
         tweet_fields=["created_at", "geo", "author_id"],
         expansions=["author_id", "geo.place_id"],
         user_fields=[
@@ -357,6 +360,10 @@ def render_stance_table(regional_stance_df):
     """
     table_dict = defaultdict(int)
     for _, row in regional_stance_df.iterrows():
+        if pd.isna(row["Verdict"]):
+            row["Verdict"] = "unknown"
+        elif row["Verdict"] == False:
+            row["Verdict"] = "false"
         verdict = VERDICT_MAPPING.get(row["Verdict"].lower(), "Unknown")
         stance = row["Stance"]
         table_dict[(stance, verdict)] += 1

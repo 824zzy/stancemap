@@ -76,7 +76,7 @@ if st.session_state.get("selected_categories") == ["Coronavirus"]:
 
     with col2:  # Place the select boxes in the second column
         sidebar_selected_broad_topics = st.multiselect(
-            f"Select broad topics under {selected_categories_str}",
+            f"Select **broad topics** under _{selected_categories_str}_",
             broad_topic_options,
             default=st.session_state.get("selected_broad_topics", None),
             disabled=has_typed_factual_claim,
@@ -95,7 +95,7 @@ if st.session_state.get("selected_categories") == ["Coronavirus"]:
                 st.session_state.selected_broad_topics
             )
             sidebar_selected_medium_topics = st.multiselect(
-                f"Select medium topics under {selected_broad_topics_str}",
+                f"Select **medium topics** under _{selected_broad_topics_str}_",
                 medium_topic_options,
                 default=st.session_state.get("selected_medium_topics", []),
                 disabled=has_typed_factual_claim,
@@ -119,7 +119,7 @@ if st.session_state.get("selected_categories") == ["Coronavirus"]:
                     st.session_state.selected_medium_topics
                 )
                 sidebar_selected_detailed_topics = st.multiselect(
-                    f"Select detailed topics under {selected_medium_topics_str}",
+                    f"Select **detailed topics** under _{selected_medium_topics_str}_",
                     detailed_topic_options,
                     default=st.session_state.get("selected_detailed_topics", None),
                     disabled=has_typed_factual_claim,
@@ -199,15 +199,21 @@ if typed_factual_claim != st.session_state.get("typed_factual_claim", ""):
         st.rerun()
     else:
         tweets = get_claim_related_tweets(st.session_state.typed_factual_claim)
-        # tweets = TEST_TWEETS
-        print("Found tweets related to the claim: ", len(tweets))
-        online_stance_df = truthfulness_stance_detection(
-            claim=st.session_state.typed_factual_claim,
-            tweets=tweets,
-        )
-        st.session_state.online_stance_df = online_stance_df
-        print("typed factual claim stance_df: ", online_stance_df)
-        st.rerun()
+        if len(tweets) == 0:
+            st.warning(
+                "No tweets found for the given factual claim. Please try another claim."
+            )
+            st.session_state.online_stance_df = pd.DataFrame()
+        else:
+            # tweets = TEST_TWEETS
+            print("Found tweets related to the claim: ", len(tweets))
+            online_stance_df = truthfulness_stance_detection(
+                claim=st.session_state.typed_factual_claim,
+                tweets=tweets,
+            )
+            st.session_state.online_stance_df = online_stance_df
+            print("typed factual claim stance_df: ", online_stance_df)
+            st.rerun()
 
 
 # Customize the sidebar
@@ -296,14 +302,15 @@ col_map, col_explaination = st.columns([3, 3])
 
 with col_map:
     # Render the map in the left column, filling the 3/4 width
+    map_data = None
     try:
         if has_typed_factual_claim:
-            m = create_map_folium(st.session_state.online_stance_df)
+            if len(st.session_state.get("online_stance_df", [])) > 0:
+                m = create_map_folium(st.session_state.online_stance_df)
+                map_data = st_folium(m, height=420, width="100%")
         else:
             m = create_map_folium(stance_df)
-        map_data = st_folium(
-            m, height=420, width="100%"
-        )  # Let Streamlit fill the column
+            map_data = st_folium(m, height=420, width="100%")
     except Exception as e:
         st.error("Failed to render the map. Please try refreshing the page.")
         st.write(f"Error details: {e}")
@@ -403,62 +410,75 @@ with col_explaination:
         explanation = generate_report(explanation_prompt, st.secrets["OPENAI_API_KEY"])
         return explanation
 
-    with st.expander("Explain stance for the selected tweet", expanded=False):
-        if map_data["last_object_clicked_popup"]:
-            clicked_marker = map_data["last_object_clicked_popup"]
-            # Extract the claim from the clicked marker
-            claim = clicked_marker.split("Claim: ")[1].split("\n")[0]
-            # Extract the tweet from the clicked marker
-            tweet = clicked_marker.split("Tweet: ")[1].split("\n")[0]
-            # Extract the stance from the clicked marker
-            stance = clicked_marker.split("Stance: ")[1].split("\n")[0]
-            if (
-                st.session_state.get("explanation") != None
-                and st.session_state.explanation[0] == tweet
-            ):
-                st.markdown(f"**Claim:** {claim}")
-                st.markdown(f"***Tweet***: {tweet}")
-                st.markdown(f"**Stance:** {stance}")
-                st.markdown(f"**Stance Explanation:** {st.session_state.explanation}")
-            elif st.button(f"Generate Explanation", key=f"explain_{clicked_marker}"):
-                # use st.session_state to store the explanation
-                tweet_explanation = generate_explanation(claim, tweet, stance)
-                st.session_state.explanation = (tweet, tweet_explanation)
-                st.markdown(f"**Claim:** {claim}")
-                st.markdown(f"***Tweet***: {tweet}")
-                st.markdown(f"**Stance:** {stance}")
-                st.markdown(f"**Stance Explanation:** {st.session_state.explanation}")
-        else:
-            st.markdown("Please select a tweet on the map to view its explanation.")
+    if (
+        has_typed_factual_claim
+        and len(st.session_state.get("online_stance_df", [])) > 0
+        or (not has_typed_factual_claim and len(stance_df) > 0)
+    ):
+        with st.expander("Explain stance for the selected tweet", expanded=False):
+            if map_data["last_object_clicked_popup"]:
+                clicked_marker = map_data["last_object_clicked_popup"]
+                # Extract the claim from the clicked marker
+                claim = clicked_marker.split("Claim: ")[1].split("\n")[0]
+                # Extract the tweet from the clicked marker
+                tweet = clicked_marker.split("Tweet: ")[1].split("\n")[0]
+                # Extract the stance from the clicked marker
+                stance = clicked_marker.split("Stance: ")[1].split("\n")[0]
+                if (
+                    st.session_state.get("explanation") != None
+                    and st.session_state.explanation[0] == tweet
+                ):
+                    st.markdown(f"**Claim:** {claim}")
+                    st.markdown(f"***Tweet***: {tweet}")
+                    st.markdown(f"**Stance:** {stance}")
+                    st.markdown(
+                        f"**Stance Explanation:** {st.session_state.explanation}"
+                    )
+                elif st.button(
+                    f"Generate Explanation", key=f"explain_{clicked_marker}"
+                ):
+                    # use st.session_state to store the explanation
+                    tweet_explanation = generate_explanation(claim, tweet, stance)
+                    st.session_state.explanation = (tweet, tweet_explanation)
+                    st.markdown(f"**Claim:** {claim}")
+                    st.markdown(f"***Tweet***: {tweet}")
+                    st.markdown(f"**Stance:** {stance}")
+                    st.markdown(
+                        f"**Stance Explanation:** {st.session_state.explanation}"
+                    )
+            else:
+                st.markdown("Please select a tweet on the map to view its explanation.")
 
-    with st.expander("Generate a report for stance distribution", expanded=False):
-        if not has_typed_factual_claim:
-            report_prompt = f"""
-            Generate a report based on the following selections:
-            - Categories/People/Issues: {selected_categories_str}
-            - Factual claims: {selected_factual_claim_str}
-            - State: {st.session_state.selected_state}
-            - Stance: {selected_stance_str}
-            - Distribution statistics:
-            {table_dict}
-            The report should include an overview of the truthfulness stance distribution, key findings, and any notable trends or insights.
-            """
-        else:
-            report_prompt = f"""
-            Generate a report based on the following typed factual claim:
-            - Factual claim: {st.session_state.typed_factual_claim}
-            - State: {st.session_state.selected_state}
-            - Stance: {selected_stance_str}
-            The report should include an overview of the truthfulness stance distribution, key findings, and any notable trends or insights.
-            """
-        if st.button("Generate Report", key="generate_report"):
-            with st.spinner("Generating report..."):
-                report = generate_report(report_prompt, st.secrets["OPENAI_API_KEY"])
-                st.session_state.generated_report = report
+        with st.expander("Generate a report for stance distribution", expanded=False):
+            if not has_typed_factual_claim:
+                report_prompt = f"""
+                Generate a report based on the following selections:
+                - Categories/People/Issues: {selected_categories_str}
+                - Factual claims: {selected_factual_claim_str}
+                - State: {st.session_state.selected_state}
+                - Stance: {selected_stance_str}
+                - Distribution statistics:
+                {table_dict}
+                The report should include an overview of the truthfulness stance distribution, key findings, and any notable trends or insights.
+                """
+            else:
+                report_prompt = f"""
+                Generate a report based on the following typed factual claim:
+                - Factual claim: {st.session_state.typed_factual_claim}
+                - State: {st.session_state.selected_state}
+                - Stance: {selected_stance_str}
+                The report should include an overview of the truthfulness stance distribution, key findings, and any notable trends or insights.
+                """
+            if st.button("Generate Report", key="generate_report"):
+                with st.spinner("Generating report..."):
+                    report = generate_report(
+                        report_prompt, st.secrets["OPENAI_API_KEY"]
+                    )
+                    st.session_state.generated_report = report
 
-        # Display the report if it exists in session state
-        if "generated_report" in st.session_state:
-            st.write(st.session_state.generated_report)
+            # Display the report if it exists in session state
+            if "generated_report" in st.session_state:
+                st.write(st.session_state.generated_report)
 
 
 ####### END: Main
