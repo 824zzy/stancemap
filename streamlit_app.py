@@ -459,7 +459,7 @@ with col_explaination:
                 - Stance: {selected_stance_str}
                 - Distribution statistics:
                 {table_dict}
-                The report should include an overview of the truthfulness stance distribution, key findings, and any notable trends or insights.
+                The report should include an overview of the truthfulness stance distribution of the tweets toward the factual claims, key findings, and any notable trends or insights. Do not use any headings or subheadings in the report.
                 """
             else:
                 report_prompt = f"""
@@ -467,7 +467,7 @@ with col_explaination:
                 - Factual claim: {st.session_state.typed_factual_claim}
                 - State: {st.session_state.selected_state}
                 - Stance: {selected_stance_str}
-                The report should include an overview of the truthfulness stance distribution, key findings, and any notable trends or insights.
+                The report should include an overview of the truthfulness stance distribution of the tweets toward the factual claims, key findings, and any notable trends or insights. Do not use any headings or subheadings in the report.
                 """
             if st.button("Generate Report", key="generate_report"):
                 with st.spinner("Generating report..."):
@@ -478,6 +478,7 @@ with col_explaination:
 
             # Display the report if it exists in session state
             if "generated_report" in st.session_state:
+                print(st.session_state.generated_report)
                 st.write(st.session_state.generated_report)
 
 
