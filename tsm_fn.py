@@ -455,7 +455,7 @@ def render_stance_table(regional_stance_df):
 
     rows = [
         [
-            "⊕",
+            "<b>⊕</b>",
             table_dict.get(("Positive", "Truth"), 0),
             table_dict.get(("Positive", "Mixed"), 0),
             table_dict.get(("Positive", "Misinfo"), 0),
@@ -463,7 +463,7 @@ def render_stance_table(regional_stance_df):
             table_dict.get(("Positive", "F1"), None),
         ],
         [
-            "⊙",
+            "<b>⊙</b>",
             table_dict.get(("Neutral", "Truth"), 0),
             table_dict.get(("Neutral", "Mixed"), 0),
             table_dict.get(("Neutral", "Misinfo"), 0),
@@ -471,7 +471,7 @@ def render_stance_table(regional_stance_df):
             table_dict.get(("Neutral", "F1"), None),
         ],
         [
-            "⊖",
+            "<b>⊖</b>",
             table_dict.get(("Negative", "Truth"), 0),
             table_dict.get(("Negative", "Mixed"), 0),
             table_dict.get(("Negative", "Misinfo"), 0),
@@ -479,7 +479,7 @@ def render_stance_table(regional_stance_df):
             table_dict.get(("Negative", "F1"), None),
         ],
         [
-            "Recall",
+            "<b>Recall</b>",
             table_dict.get(("Truth", "Recall"), None),
             table_dict.get(("Mixed", "Recall"), None),
             table_dict.get(("Misinfo", "Recall"), None),
@@ -560,7 +560,8 @@ def render_stance_table(regional_stance_df):
         html += f"<td>{'' if f1 is None else f'{f1:.1f}'}</td>"
         html += "</tr>"
 
-    html += "</table>"
+    html += "</table><hr>Note: Precision, Recall, and F1 measure the accuracy of tweet stance alignment with the claim’s verdict."
+    ""
     return html, table_dict
 
 
