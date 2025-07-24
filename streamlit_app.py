@@ -429,7 +429,7 @@ with col_explaination:
                     and st.session_state.explanation[0] == tweet
                 ):
                     st.markdown(f"**Claim:** {claim}")
-                    st.markdown(f"***Tweet***: {tweet}")
+                    st.markdown(f"**Tweet**: {tweet}")
                     st.markdown(f"**Stance:** {stance}")
                     st.markdown(
                         f"**Stance Explanation:** {st.session_state.explanation}"
@@ -441,7 +441,7 @@ with col_explaination:
                     tweet_explanation = generate_explanation(claim, tweet, stance)
                     st.session_state.explanation = (tweet, tweet_explanation)
                     st.markdown(f"**Claim:** {claim}")
-                    st.markdown(f"***Tweet***: {tweet}")
+                    st.markdown(f"**Tweet**: {tweet}")
                     st.markdown(f"**Stance:** {stance}")
                     st.markdown(
                         f"**Stance Explanation:** {st.session_state.explanation}"
