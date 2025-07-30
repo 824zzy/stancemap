@@ -432,7 +432,7 @@ with col_explaination:
                     st.markdown(f"**Tweet**: {tweet}")
                     st.markdown(f"**Stance:** {stance}")
                     st.markdown(
-                        f"**Stance Explanation:** {st.session_state.explanation}"
+                        f"**Stance Explanation:** {st.session_state.explanation[1]}"
                     )
                 elif st.button(
                     f"Generate Explanation", key=f"explain_{clicked_marker}"
@@ -444,7 +444,7 @@ with col_explaination:
                     st.markdown(f"**Tweet**: {tweet}")
                     st.markdown(f"**Stance:** {stance}")
                     st.markdown(
-                        f"**Stance Explanation:** {st.session_state.explanation}"
+                        f"**Stance Explanation:** {st.session_state.explanation[1]}"
                     )
             else:
                 st.markdown("Please select a tweet on the map to view its explanation.")
